@@ -3,6 +3,7 @@ package got
 import (
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"os"
 	"sync"
@@ -57,6 +58,9 @@ type (
 		// Stop Progress loop.
 		StopProgress bool
 
+		// Chunks temp dir.
+		temp string
+
 		// Donwload file chunks.
 		chunks []*Chunk
 
@@ -72,12 +76,21 @@ type (
 )
 
 // Start downloading.
-func (d *Download) Start() error {
+func (d *Download) Start() (err error) {
 
 	var (
 		okChan  chan bool  = make(chan bool, 1)
 		errChan chan error = make(chan error)
 	)
+
+	d.temp, err = ioutil.TempDir("", "GotChunks")
+
+	if err != nil {
+		return err
+	}
+
+	// Clean temp.
+	defer os.RemoveAll(d.temp)
 
 	// Call progress func.
 	go d.progress.Run(d)
@@ -302,13 +315,11 @@ func (d *Download) work(echan *chan error, done *chan bool) {
 						return
 					}
 
-					func() {
+					// Copy chunk content to dest file.
+					_, err = io.Copy(file, chunk)
 
-						defer os.Remove(d.chunks[i].Path)
-						defer chunk.Close()
-
-						_, err = io.Copy(file, chunk)
-					}()
+					// Close chunk fd.
+					chunk.Close()
 
 					if err != nil {
 
@@ -321,10 +332,11 @@ func (d *Download) work(echan *chan error, done *chan bool) {
 			}
 
 			if next == len(d.chunks) {
-
 				*done <- true
 				return
 			}
+
+			time.Sleep(6 * time.Millisecond)
 		}
 	}()
 
@@ -337,7 +349,14 @@ func (d *Download) work(echan *chan error, done *chan bool) {
 
 			defer swg.Done()
 
-			err := d.chunks[i].Download(d.URL, d.client, nil)
+			dest, err := ioutil.TempFile(d.temp, fmt.Sprintf("chunk-%d", i))
+
+			if err != nil {
+				*echan <- err
+				return
+			}
+
+			err = d.chunks[i].Download(d.URL, d.client, dest)
 
 			if err != nil {
 				*echan <- err

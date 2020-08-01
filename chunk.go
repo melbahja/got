@@ -3,7 +3,6 @@ package got
 import (
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 )
@@ -22,22 +21,10 @@ type Chunk struct {
 
 	// Path name where this chunk downloaded.
 	Path string
-
-	// Is this chunk merged to dest file?
-	// merged bool
 }
 
 // Download a chunk, and report to Progress, it returns error if any!
-func (c *Chunk) Download(URL string, client *http.Client, file *os.File) (err error) {
-
-	if file == nil {
-
-		file, err = ioutil.TempFile("", "GotTemp")
-
-		if err != nil {
-			return err
-		}
-	}
+func (c *Chunk) Download(URL string, client *http.Client, dest *os.File) (err error) {
 
 	req, err := http.NewRequest("GET", URL, nil)
 
@@ -62,12 +49,11 @@ func (c *Chunk) Download(URL string, client *http.Client, file *os.File) (err er
 
 	defer res.Body.Close()
 
-	_, err = io.Copy(file, io.TeeReader(res.Body, c.Progress))
+	_, err = io.Copy(dest, io.TeeReader(res.Body, c.Progress))
 
 	if err == nil {
-		c.Path = file.Name()
+		c.Path = dest.Name()
 	}
 
 	return err
-
 }

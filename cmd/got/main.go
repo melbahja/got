@@ -13,7 +13,6 @@ var (
 	url         string
 	version     string
 	dest        = flag.String("out", "", "Downloaded file path.")
-	redirects   = flag.Bool("redirects", false, "Follow redirects.")
 	chunkSize   = flag.Int("size", 0, "Max chunk size.")
 	concurrency = flag.Int("concurrency", 0, "Max download connections to open at the same time.")
 )
@@ -51,7 +50,6 @@ func main() {
 				humanize.Bytes(uint64(i)),
 			)
 		},
-		Redirects:   *redirects,
 		ChunkSize:   int64(*chunkSize),
 		Interval:    100,
 		Concurrency: *concurrency,
