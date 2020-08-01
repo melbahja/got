@@ -1,2 +1,3 @@
-# got
-Got: A Golang CLI tool to download files 10x faster than cURL and Wget!
+# Got
+
+Got: GO CLI tool to download files faster than cURL and Wget!
