@@ -1,9 +1,20 @@
-# Got
+<div align="center">
+	<h1>Got.</h1>
+    <h4 align="center">
+	   Simple and fast concurrent downloader.  
+	</h4>
+</div>
 
-Got: Simple and fast GO command line tool to download files.
+<p align="center">
+    <a href="#installation">Installation</a> ❘
+    <a href="#command-line-tool-usage">CLI Usage</a> ❘
+    <a href="#module-usage">Module Usage</a> ❘
+    <a href="#license">License</a>
+</p>
 
+## Comparison
 
-### Comparison in my machine:
+Comparison in my machine:
 
 ```bash
 // cURL
@@ -21,8 +32,8 @@ real	0m7.136s
 user	0m0.793s
 sys	0m0.507s
 ```
-
-### Comparison in cloud server:
+---
+Comparison in cloud server:
 
 ```bash
 // Got
@@ -32,7 +43,6 @@ $ time got --out /tmp/test http://www.ovh.net/files/1Gio.dat
 real	0m10.273s
 user	0m0.205s
 sys	0m3.296s
-
 
 // cURL
 $ time curl http://www.ovh.net/files/1Gio.dat --output /tmp/test1
@@ -44,3 +54,54 @@ real	0m33.318s
 user	0m0.420s
 sys	0m2.056s
 ```
+
+## Installation
+
+```bash
+go get github.com/melbahja/got/cmd/got
+```
+
+Or you can download compiled version from releases.  
+
+## Command Line Tool Usage
+
+
+```bash
+got --out /path/to/save https://example.com/file.mp4
+```
+
+To see all available flags for advanced usage you can type:
+```bash
+got --help
+```
+
+
+## Module Usage
+
+You can use Got to download large files in your go code, the usage is simple as the CLI tool:
+
+```bash
+package main
+
+import "github.com/melbahja/got"
+
+func main() {
+	
+	dl, err := got.New("https://example.com/file.mp4", "/path/to/save")
+
+    if err != nil {
+    	// handle the error!
+    }
+    
+    // Start the download
+    err = dl.Start()
+}
+
+```
+
+For more see examples directory, and PkgDoc.
+
+
+## License
+
+Got is provided under the [MIT License](https://github.com/melbahja/got/blob/master/LICENSE) © Mohammed El Bahja.
