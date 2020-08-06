@@ -97,19 +97,19 @@ func (d *Download) Init() error {
 		},
 	}
 
-	// Get URL info.
-	d.Info, err = d.GetInfo()
-
-	if err != nil {
-		return err
-	}
-
 	// Init progress.
 	d.progress = new(Progress)
 
 	// Set default interval.
 	if d.Interval == 0 {
 		d.Interval = 20
+	}
+
+	// Get URL info.
+	d.Info, err = d.GetInfo()
+
+	if err != nil {
+		return err
 	}
 
 	// Partial content not supported 😢!
@@ -153,7 +153,7 @@ func (d *Download) Init() error {
 		}
 	}
 
-	// avoid divide by zero
+	// Avoid divide by zero
 	if d.ChunkSize > 0 {
 		chunksLen = d.Info.Length / d.ChunkSize
 	}
@@ -223,6 +223,8 @@ func (d *Download) Start() (err error) {
 			if d.ProgressFunc != nil {
 				d.ProgressFunc(d.Info.Length, d.Info.Length, d)
 			}
+
+			return nil
 		}
 	}
 
@@ -351,16 +353,18 @@ func (d *Download) work(echan *chan error, done *chan bool) {
 
 			defer swg.Done()
 
-			dest, err := ioutil.TempFile(d.temp, fmt.Sprintf("chunk-%d", i))
+			chunk, err := ioutil.TempFile(d.temp, fmt.Sprintf("chunk-%d", i))
 
 			if err != nil {
 				*echan <- err
 				return
 			}
 
-			err = d.chunks[i].Download(d.URL, d.client, dest)
+			// Close chunk fd.
+			defer chunk.Close()
 
-			if err != nil {
+			// Donwload the chunk.
+			if err = d.chunks[i].Download(d.URL, d.client, chunk); err != nil {
 				*echan <- err
 			}
 
