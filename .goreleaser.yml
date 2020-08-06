@@ -1,0 +1,42 @@
+project_name: got
+before:
+  hooks:
+    - go mod download
+builds:
+-
+  env:
+    - CGO_ENABLED=0
+  dir: cmd/got
+  ldflags:
+    - -X main.version={{.Version}}+{{.ShortCommit}}
+  goos:
+    - linux
+    - darwin
+    - freebsd
+    - windows
+  goarch:
+    - amd64
+
+archives:
+- replacements:
+    darwin: Darwin
+    linux: Linux
+    freebsd: Freebsd
+    windows: Windows
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+signs:
+  - artifacts: checksum
+
+snapshot:
+  name_template: "{{ .Tag }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+    - '^docs:'
+    - '^test:'
