@@ -12,7 +12,7 @@ import (
 
 type (
 
-	// URL info.
+	// Downloadable URL info.
 	Info struct {
 
 		// File content length.
@@ -40,7 +40,7 @@ type (
 		// File destination
 		Dest string
 
-		// Interval in ms
+		// Progress interval in ms.
 		Interval int
 
 		// Split file chunk by size in bytes.
@@ -52,10 +52,10 @@ type (
 		// Set min chunk size.
 		MinChunkSize int64
 
-		// Max connections to open at same time.
+		// Max chunks to download at same time.
 		Concurrency int
 
-		// Stop Progress loop.
+		// Stop progress loop.
 		StopProgress bool
 
 		// Chunks temp dir.
@@ -75,6 +75,114 @@ type (
 	}
 )
 
+// Check Download and split file to chunks and set defaults,
+// you should call Init first then call Start
+func (d *Download) Init() error {
+
+	var (
+		err                                error
+		i, startRange, endRange, chunksLen int64
+	)
+
+	// Set http client
+	d.client = &http.Client{
+		Transport: &http.Transport{
+			MaxIdleConns:        10,
+			IdleConnTimeout:     30 * time.Second,
+			TLSHandshakeTimeout: 5 * time.Second,
+		},
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			d.redirected = true
+			return nil
+		},
+	}
+
+	// Get URL info.
+	d.Info, err = d.GetInfo()
+
+	if err != nil {
+		return err
+	}
+
+	// Init progress.
+	d.progress = new(Progress)
+
+	// Set default interval.
+	if d.Interval == 0 {
+		d.Interval = 20
+	}
+
+	// Partial content not supported 😢!
+	if d.Info.Rangeable == false || d.Info.Length == 0 {
+		return err
+	}
+
+	// Set concurrency default to 10.
+	if d.Concurrency == 0 {
+		d.Concurrency = 10
+	}
+
+	// Set default chunk size
+	if d.ChunkSize == 0 {
+
+		d.ChunkSize = d.Info.Length / int64(d.Concurrency)
+
+		// if chunk size >= 102400000 bytes set default to (ChunkSize / 2)
+		if d.ChunkSize >= 102400000 {
+			d.ChunkSize = d.ChunkSize / 2
+		}
+
+		// Change ChunkSize if MaxChunkSize are set and ChunkSize > Max size
+		if d.MaxChunkSize > 0 && d.ChunkSize > d.MaxChunkSize {
+			d.ChunkSize = d.MaxChunkSize
+		}
+
+		// Set default min chunk size to 1m, or file size / 2
+		if d.MinChunkSize == 0 {
+
+			d.MinChunkSize = 1000000
+
+			if d.MinChunkSize > d.Info.Length {
+				d.MinChunkSize = d.Info.Length / 2
+			}
+		}
+
+		// if Chunk size < Min size set chunk size to length / 2
+		if d.ChunkSize < d.MinChunkSize {
+			d.ChunkSize = d.MinChunkSize
+		}
+	}
+
+	// avoid divide by zero
+	if d.ChunkSize > 0 {
+		chunksLen = d.Info.Length / d.ChunkSize
+	}
+
+	// Set chunks.
+	for ; i < chunksLen; i++ {
+
+		startRange = (d.ChunkSize * i) + 1
+
+		if i == 0 {
+			startRange = 0
+		}
+
+		endRange = startRange + d.ChunkSize
+
+		if i == (chunksLen - 1) {
+			endRange = 0
+		}
+
+		d.chunks = append(d.chunks, &Chunk{
+			Start:    startRange,
+			End:      endRange,
+			Progress: d.progress,
+		})
+	}
+
+	return nil
+}
+
 // Start downloading.
 func (d *Download) Start() (err error) {
 
@@ -83,8 +191,10 @@ func (d *Download) Start() (err error) {
 		errChan chan error = make(chan error)
 	)
 
+	// Create a new temp dir for this download.
 	d.temp, err = ioutil.TempDir("", "GotChunks")
 
+	// ...
 	if err != nil {
 		return err
 	}
@@ -92,13 +202,13 @@ func (d *Download) Start() (err error) {
 	// Clean temp.
 	defer os.RemoveAll(d.temp)
 
-	// Call progress func.
+	// Run progress func.
 	go d.progress.Run(d)
 
-	// Download chunks.
+	// Start download chunks.
 	go d.work(&errChan, &okChan)
 
-	// Wait...
+	// Wait for chunks...
 	for {
 
 		select {
@@ -113,8 +223,6 @@ func (d *Download) Start() (err error) {
 			if d.ProgressFunc != nil {
 				d.ProgressFunc(d.Info.Length, d.Info.Length, d)
 			}
-
-			return nil
 		}
 	}
 
@@ -148,113 +256,7 @@ func (d *Download) GetInfo() (*Info, error) {
 	}, nil
 }
 
-// Check Download and set ranges of chunks, set defaults and start the work,
-// you should call Init first then call Start
-func (d *Download) Init() (err error) {
-
-	// Set http client
-	d.client = &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConns:        10,
-			IdleConnTimeout:     30 * time.Second,
-			TLSHandshakeTimeout: 5 * time.Second,
-		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			d.redirected = true
-			return nil
-		},
-	}
-
-	// Init progress.
-	d.progress = new(Progress)
-
-	// Set default interval.
-	if d.Interval == 0 {
-		d.Interval = 0
-	}
-
-	// Get URL info.
-	d.Info, err = d.GetInfo()
-
-	if err != nil {
-		return
-	}
-
-	// Partial content not supported 😢!
-	if d.Info.Rangeable == false || d.Info.Length == 0 {
-		return
-	}
-
-	// Set concurrency default to 10.
-	if d.Concurrency == 0 {
-		d.Concurrency = 10
-	}
-
-	// Set default chunk size
-	if d.ChunkSize == 0 {
-
-		d.ChunkSize = d.Info.Length / int64(d.Concurrency)
-
-		// if chunk size >= 102400000bytes set default to (ChunkSize / 2)
-		if d.ChunkSize >= 102400000 {
-			d.ChunkSize = d.ChunkSize / 2
-		}
-
-		// Change ChunkSize if MaxChunkSize are set and ChunkSize > Max size
-		if d.MaxChunkSize > 0 && d.ChunkSize > d.MaxChunkSize {
-			d.ChunkSize = d.MaxChunkSize
-		}
-
-		// Set default min chunk size to 1m, or file size / 2
-		if d.MinChunkSize == 0 {
-
-			d.MinChunkSize = 1000000
-
-			if d.MinChunkSize > d.Info.Length {
-				d.MinChunkSize = d.Info.Length / 2
-			}
-		}
-
-		// if Chunk size < Min size set chunk size to length / 2
-		if d.ChunkSize < d.MinChunkSize {
-			d.ChunkSize = d.MinChunkSize
-		}
-	}
-
-	var i, startRange, endRange, chunksLen int64
-
-	// avoid divide by zero
-	if d.ChunkSize > 0 {
-		chunksLen = d.Info.Length / d.ChunkSize
-	}
-
-	// Set chunks.
-	for ; i < chunksLen; i++ {
-
-		startRange = (d.ChunkSize * i) + 1
-
-		if i == 0 {
-			startRange = 0
-		}
-
-		endRange = startRange + d.ChunkSize
-
-		if i == (chunksLen - 1) {
-			endRange = 0
-		}
-
-		d.chunks = append(d.chunks, &Chunk{
-			Start:    startRange,
-			End:      endRange,
-			Progress: d.progress,
-		})
-	}
-
-	return
-}
-
-// Download chunks and wait for them to finish,
-// in same time merge them into dest path.
+// Download chunks and in same time merge them into dest path.
 func (d *Download) work(echan *chan error, done *chan bool) {
 
 	var (

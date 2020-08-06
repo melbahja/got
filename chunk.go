@@ -16,7 +16,7 @@ type Chunk struct {
 	// Chunk start pos.
 	Start int64
 
-	// Chunk end pos.
+	// Chunk end.
 	End int64
 
 	// Path name where this chunk downloaded.

@@ -23,7 +23,7 @@ func TestChunksLength(t *testing.T) {
 	}
 
 	// Last chunk should not have end,
-	// So the server will read will respond with the remaining content starting form 5242871
+	// So the server must respond with the remaining content starting form 5242871
 	chunk1 := Chunk{
 		Start: 5242871,
 		End:   0,
