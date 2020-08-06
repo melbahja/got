@@ -57,7 +57,7 @@ sys	0m2.056s
 
 ## Installation
 
-You can download compiled version from releases.
+You can download compiled version from [releases](https://github.com/melbahja/got/releases).
 
 Or Go ahead compile it yourself:
 ```bash
