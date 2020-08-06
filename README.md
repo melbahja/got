@@ -1,7 +1,7 @@
 <div align="center">
 	<h1>Got.</h1>
     <h4 align="center">
-	   Simple and fast concurrent downloader.  
+	   Simple and fast concurrent downloader.
 	</h4>
 </div>
 
@@ -57,11 +57,13 @@ sys	0m2.056s
 
 ## Installation
 
+You can download compiled version from releases.
+
+Or Go ahead compile it yourself:
 ```bash
 go get github.com/melbahja/got/cmd/got
 ```
 
-Or you can download compiled version from releases.  
 
 ## Command Line Tool Usage
 
@@ -86,20 +88,20 @@ package main
 import "github.com/melbahja/got"
 
 func main() {
-	
+
 	dl, err := got.New("https://example.com/file.mp4", "/path/to/save")
 
     if err != nil {
     	// handle the error!
     }
-    
+
     // Start the download
     err = dl.Start()
 }
 
 ```
 
-For more see examples directory, and PkgDoc.
+For more see [GoDocs](https://pkg.go.dev/github.com/melbahja/got).
 
 
 ## License
