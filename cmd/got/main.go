@@ -12,9 +12,9 @@ import (
 var (
 	url         string
 	version     string
-	dest        = flag.String("out", "", "Downloaded file path.")
-	chunkSize   = flag.Int("size", 0, "Max chunk size.")
-	concurrency = flag.Int("concurrency", 0, "Max download connections to open at the same time.")
+	dest        = flag.String("out", "", "Downloaded file destination.")
+	chunkSize   = flag.Int("size", 0, "Maximum chunk size in bytes.")
+	concurrency = flag.Int("concurrency", 10, "Maximum chunks to download at the same time.")
 )
 
 func init() {
