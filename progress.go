@@ -1,8 +1,8 @@
 package got
 
 import (
-	"time"
 	"sync"
+	"time"
 )
 
 type (
@@ -10,7 +10,7 @@ type (
 	// Download progress.
 	Progress struct {
 		Size int64
-		mu sync.RWMutex
+		mu   sync.RWMutex
 	}
 
 	// Progress report func.

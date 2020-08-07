@@ -81,7 +81,6 @@ type (
 	}
 )
 
-
 // Check Download and split file to chunks and set defaults,
 // you should call Init first then call Start
 func (d *Download) Init() error {
@@ -170,18 +169,18 @@ func (d *Download) Init() error {
 	for ; i < chunksLen; i++ {
 
 		startRange = (d.ChunkSize * i) + i
-		endRange   = startRange + d.ChunkSize
+		endRange = startRange + d.ChunkSize
 
 		if i == 0 {
 
 			startRange = 0
 
-		} else if d.chunks[i - 1].End == 0 {
+		} else if d.chunks[i-1].End == 0 {
 
 			break
 		}
 
-		if endRange > d.Info.Length || i == (chunksLen - 1) {
+		if endRange > d.Info.Length || i == (chunksLen-1) {
 			endRange = 0
 		}
 
@@ -297,14 +296,13 @@ func (d *Download) GetInfo() (*Info, error) {
 	}, nil
 }
 
-
 // Merge downloaded chunks.
 func (d *Download) merge(echan *chan error, done *chan bool) {
 
 	file, err := os.Create(d.Dest)
 
 	if err != nil {
-		*echan <-err
+		*echan <- err
 		return
 	}
 
@@ -322,14 +320,14 @@ func (d *Download) merge(echan *chan error, done *chan bool) {
 				chunk, err := os.Open(d.chunks[i].Path)
 
 				if err != nil {
-					*echan <-err
+					*echan <- err
 					return
 				}
 
 				_, err = io.Copy(file, chunk)
 
 				if err != nil {
-					*echan <-err
+					*echan <- err
 					return
 				}
 
@@ -352,7 +350,6 @@ func (d *Download) merge(echan *chan error, done *chan bool) {
 	}
 }
 
-
 // Download chunks
 func (d *Download) dl(echan *chan error) {
 
@@ -367,7 +364,7 @@ func (d *Download) dl(echan *chan error) {
 
 	for i := 0; i < len(d.chunks); i++ {
 
-		max <-1
+		max <- 1
 		swg.Add(1)
 
 		go func(i int) {
@@ -377,7 +374,7 @@ func (d *Download) dl(echan *chan error) {
 			chunk, err := os.Create(fmt.Sprintf("%s/chunk-%d", d.temp, i))
 
 			if err != nil {
-				*echan <-err
+				*echan <- err
 				return
 			}
 
@@ -385,7 +382,7 @@ func (d *Download) dl(echan *chan error) {
 			defer chunk.Close()
 
 			// Donwload chunk.
-			*echan <-d.chunks[i].Download(d.URL, d.client, chunk)
+			*echan <- d.chunks[i].Download(d.URL, d.client, chunk)
 
 			d.mu.Lock()
 			d.chunks[i].Path = chunk.Name()

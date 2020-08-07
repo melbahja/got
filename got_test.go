@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"testing"
 	"strings"
+	"testing"
 	"time"
 
 	"io/ioutil"
@@ -133,7 +133,6 @@ func getInfoTest(t *testing.T, url string, expect got.Info) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-
 	d, err := got.New(url, tmpFile)
 
 	if err != nil {
@@ -159,7 +158,6 @@ func initTest(t *testing.T, url string) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-
 	d := got.Download{
 		URL:  url,
 		Dest: tmpFile,
@@ -174,7 +172,6 @@ func downloadChunksTest(t *testing.T, url string, size int64) {
 
 	tmpFile := createTemp()
 	defer clean(tmpFile)
-
 
 	d, err := got.New(url, tmpFile)
 
@@ -195,7 +192,6 @@ func downloadTest(t *testing.T, url string, size int64) {
 
 	tmpFile := createTemp()
 	defer clean(tmpFile)
-
 
 	d := &got.Download{
 		URL:          url,
@@ -230,7 +226,6 @@ func downloadNotFoundTest(t *testing.T, url string) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-
 	_, err := got.New(url, tmpFile)
 
 	if err == nil {
@@ -245,7 +240,7 @@ func downloadHeadNotSupported(t *testing.T, url string) {
 	defer clean(tmpFile)
 
 	d := &got.Download{
-		URL: url,
+		URL:  url,
 		Dest: tmpFile,
 	}
 
@@ -309,8 +304,8 @@ func fileContentTest(t *testing.T, url string) {
 	defer clean(tmpFile)
 
 	d := &got.Download{
-		URL:  url,
-		Dest: tmpFile,
+		URL:       url,
+		Dest:      tmpFile,
 		ChunkSize: 10,
 	}
 
