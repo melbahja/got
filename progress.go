@@ -2,13 +2,15 @@ package got
 
 import (
 	"time"
+	"sync"
 )
 
 type (
 
 	// Download progress.
 	Progress struct {
-		Length int64
+		Size int64
+		mu sync.RWMutex
 	}
 
 	// Progress report func.
@@ -25,7 +27,7 @@ func (p *Progress) Run(d *Download) {
 				break
 			}
 
-			d.ProgressFunc(p.Length, d.Info.Length, d)
+			d.ProgressFunc(p.Size, d.Info.Length, d)
 
 			time.Sleep(time.Duration(d.Interval) * time.Millisecond)
 		}
@@ -33,7 +35,9 @@ func (p *Progress) Run(d *Download) {
 }
 
 func (p *Progress) Write(b []byte) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	n := len(b)
-	p.Length += int64(n)
+	p.Size += int64(n)
 	return n, nil
 }

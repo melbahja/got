@@ -21,6 +21,10 @@ type Chunk struct {
 
 	// Path name where this chunk downloaded.
 	Path string
+
+	Downloaded bool
+
+	Merged bool
 }
 
 // Download a chunk, and report to Progress, it returns error if any!
@@ -50,10 +54,6 @@ func (c *Chunk) Download(URL string, client *http.Client, dest *os.File) (err er
 	defer res.Body.Close()
 
 	_, err = io.Copy(dest, io.TeeReader(res.Body, c.Progress))
-
-	if err == nil {
-		c.Path = dest.Name()
-	}
 
 	return err
 }

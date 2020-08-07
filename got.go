@@ -72,8 +72,15 @@ type (
 
 		// Progress...
 		progress *Progress
+
+		// Chunk merge index.
+		index int
+
+		// Sync mutex.
+		mu sync.RWMutex
 	}
 )
+
 
 // Check Download and split file to chunks and set defaults,
 // you should call Init first then call Start
@@ -98,7 +105,9 @@ func (d *Download) Init() error {
 	}
 
 	// Init progress.
-	d.progress = new(Progress)
+	d.progress = &Progress{
+		mu: d.mu,
+	}
 
 	// Set default interval.
 	if d.Interval == 0 {
@@ -106,15 +115,13 @@ func (d *Download) Init() error {
 	}
 
 	// Get URL info.
-	d.Info, err = d.GetInfo()
-
-	if err != nil {
+	if d.Info, err = d.GetInfo(); err != nil {
 		return err
 	}
 
 	// Partial content not supported 😢!
 	if d.Info.Rangeable == false || d.Info.Length == 0 {
-		return err
+		return nil
 	}
 
 	// Set concurrency default to 10.
@@ -132,11 +139,6 @@ func (d *Download) Init() error {
 			d.ChunkSize = d.ChunkSize / 2
 		}
 
-		// Change ChunkSize if MaxChunkSize are set and ChunkSize > Max size
-		if d.MaxChunkSize > 0 && d.ChunkSize > d.MaxChunkSize {
-			d.ChunkSize = d.MaxChunkSize
-		}
-
 		// Set default min chunk size to 1m, or file size / 2
 		if d.MinChunkSize == 0 {
 
@@ -147,29 +149,39 @@ func (d *Download) Init() error {
 			}
 		}
 
-		// if Chunk size < Min size set chunk size to length / 2
+		// if Chunk size < Min size set chunk size to min.
 		if d.ChunkSize < d.MinChunkSize {
 			d.ChunkSize = d.MinChunkSize
 		}
-	}
 
-	// Avoid divide by zero
-	if d.ChunkSize > 0 {
-		chunksLen = d.Info.Length / d.ChunkSize
-	}
-
-	// Set chunks.
-	for ; i < chunksLen; i++ {
-
-		startRange = (d.ChunkSize * i) + 1
-
-		if i == 0 {
-			startRange = 0
+		// Change ChunkSize if MaxChunkSize are set and ChunkSize > Max size
+		if d.MaxChunkSize > 0 && d.ChunkSize > d.MaxChunkSize {
+			d.ChunkSize = d.MaxChunkSize
 		}
 
-		endRange = startRange + d.ChunkSize
+	} else if d.ChunkSize > d.Info.Length {
 
-		if i == (chunksLen - 1) {
+		d.ChunkSize = d.Info.Length / 2
+	}
+
+	chunksLen = d.Info.Length / d.ChunkSize
+
+	// Set chunk ranges.
+	for ; i < chunksLen; i++ {
+
+		startRange = (d.ChunkSize * i) + i
+		endRange   = startRange + d.ChunkSize
+
+		if i == 0 {
+
+			startRange = 0
+
+		} else if d.chunks[i - 1].End == 0 {
+
+			break
+		}
+
+		if endRange > d.Info.Length || i == (chunksLen - 1) {
 			endRange = 0
 		}
 
@@ -205,8 +217,30 @@ func (d *Download) Start() (err error) {
 	// Run progress func.
 	go d.progress.Run(d)
 
-	// Start download chunks.
-	go d.work(&errChan, &okChan)
+	// Partial content not supported,
+	// just download the file in one chunk.
+	if len(d.chunks) == 0 {
+
+		file, err := os.Create(d.Dest)
+
+		if err != nil {
+			return err
+		}
+
+		defer file.Close()
+
+		chunk := &Chunk{
+			Progress: d.progress,
+		}
+
+		return chunk.Download(d.URL, d.client, file)
+	}
+
+	// Download chunks.
+	go d.dl(&errChan)
+
+	// Merge chunks.
+	go d.merge(&errChan, &okChan)
 
 	// Wait for chunks...
 	for {
@@ -214,7 +248,12 @@ func (d *Download) Start() (err error) {
 		select {
 
 		case err := <-errChan:
-			return err
+
+			if err != nil {
+				return err
+			}
+
+			break
 
 		case <-okChan:
 
@@ -258,115 +297,100 @@ func (d *Download) GetInfo() (*Info, error) {
 	}, nil
 }
 
-// Download chunks and in same time merge them into dest path.
-func (d *Download) work(echan *chan error, done *chan bool) {
+
+// Merge downloaded chunks.
+func (d *Download) merge(echan *chan error, done *chan bool) {
+
+	file, err := os.Create(d.Dest)
+
+	if err != nil {
+		*echan <-err
+		return
+	}
+
+	defer file.Close()
+
+	chunksLen := len(d.chunks)
+
+	for {
+
+		for i := range d.chunks {
+
+			d.mu.RLock()
+			if d.chunks[i].Downloaded && d.chunks[i].Merged == false && i == d.index {
+
+				chunk, err := os.Open(d.chunks[i].Path)
+
+				if err != nil {
+					*echan <-err
+					return
+				}
+
+				_, err = io.Copy(file, chunk)
+
+				if err != nil {
+					*echan <-err
+					return
+				}
+
+				go chunk.Close()
+
+				// Sync dest file.
+				file.Sync()
+
+				d.chunks[i].Merged = true
+				d.index++
+			}
+			d.mu.RUnlock()
+
+			// done, all chunks merged.
+			if d.index == chunksLen {
+				*done <- true
+				return
+			}
+		}
+	}
+}
+
+
+// Download chunks
+func (d *Download) dl(echan *chan error) {
 
 	var (
-		// Next chunk index.
-		next int = 0
 
 		// Waiting group.
 		swg sync.WaitGroup
 
 		// Concurrency limit.
 		max chan int = make(chan int, d.Concurrency)
-
-		// Chunk file.
-		chunk *os.File
 	)
-
-	go func() {
-
-		chunksLen := len(d.chunks)
-
-		file, err := os.Create(d.Dest)
-
-		if err != nil {
-			*echan <- err
-			return
-		}
-
-		defer file.Close()
-
-		// Partial content not supported or file length is unknown,
-		// so just download it directly in one chunk!
-		if chunksLen == 0 {
-
-			chunk := &Chunk{
-				Progress: d.progress,
-			}
-
-			if err := chunk.Download(d.URL, d.client, file); err != nil {
-				*echan <- err
-				return
-			}
-
-			*done <- true
-			return
-		}
-
-		for {
-
-			for i := 0; i < len(d.chunks); i++ {
-
-				if next == i && d.chunks[i].Path != "" {
-
-					chunk, err = os.Open(d.chunks[i].Path)
-
-					if err != nil {
-
-						*echan <- err
-						return
-					}
-
-					// Copy chunk content to dest file.
-					_, err = io.Copy(file, chunk)
-
-					// Close chunk fd.
-					chunk.Close()
-
-					if err != nil {
-
-						*echan <- err
-						return
-					}
-
-					next++
-				}
-			}
-
-			if next == len(d.chunks) {
-				*done <- true
-				return
-			}
-
-			time.Sleep(6 * time.Millisecond)
-		}
-	}()
 
 	for i := 0; i < len(d.chunks); i++ {
 
-		max <- 1
+		max <-1
 		swg.Add(1)
 
 		go func(i int) {
 
 			defer swg.Done()
 
-			chunk, err := ioutil.TempFile(d.temp, fmt.Sprintf("chunk-%d", i))
+			chunk, err := os.Create(fmt.Sprintf("%s/chunk-%d", d.temp, i))
 
 			if err != nil {
-				*echan <- err
+				*echan <-err
 				return
 			}
 
 			// Close chunk fd.
 			defer chunk.Close()
 
-			// Donwload the chunk.
-			if err = d.chunks[i].Download(d.URL, d.client, chunk); err != nil {
-				*echan <- err
-			}
+			// Donwload chunk.
+			*echan <-d.chunks[i].Download(d.URL, d.client, chunk)
+
+			d.mu.Lock()
+			d.chunks[i].Path = chunk.Name()
+			d.chunks[i].Downloaded = true
+			d.mu.Unlock()
 
 			<-max
 		}(i)
