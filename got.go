@@ -81,6 +81,8 @@ type (
 	}
 )
 
+const DEFAULT_USER_AGENT = "Got/1.0"
+
 // Check Download and split file to chunks and set defaults,
 // you should call Init first then call Start
 func (d *Download) Init() error {
@@ -271,22 +273,23 @@ func (d *Download) Start() (err error) {
 
 // Get url info.
 func (d *Download) GetInfo() (*Info, error) {
-
-	res, err := d.client.Head(d.URL)
-
+	req, err := http.NewRequest("HEAD", d.URL, nil)
 	if err != nil {
-
 		return nil, err
+	}
+	req.Header.Set("User-Agent", DEFAULT_USER_AGENT)
+	res, err := d.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
 
-	} else if res.StatusCode < 200 || res.StatusCode > 299 {
-
-		// When HEAD reuqest not supported.
+	if res.StatusCode < 200 || res.StatusCode > 299 {
+		// When HEAD request not supported.
 		if res.StatusCode == http.StatusMethodNotAllowed {
 
 			return &Info{}, nil
 		}
-
-		return nil, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
+		return nil, fmt.Errorf("response status code is not ok: %d", res.StatusCode)
 	}
 
 	return &Info{
@@ -381,7 +384,7 @@ func (d *Download) dl(echan *chan error) {
 			// Close chunk fd.
 			defer chunk.Close()
 
-			// Donwload chunk.
+			// Download chunk.
 			*echan <- d.chunks[i].Download(d.URL, d.client, chunk)
 
 			d.mu.Lock()
