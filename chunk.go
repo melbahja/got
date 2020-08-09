@@ -43,7 +43,7 @@ func (c *Chunk) Download(URL string, client *http.Client, dest *os.File) (err er
 	}
 
 	req.Header.Set("Range", contentRange)
-	req.Header.Set("User-Agent", "Got/1.0")
+	req.Header.Set("User-Agent", DEFAULT_USER_AGENT)
 
 	res, err := client.Do(req)
 
