@@ -98,6 +98,7 @@ func (d *Download) Init() error {
 			MaxIdleConns:        10,
 			IdleConnTimeout:     30 * time.Second,
 			TLSHandshakeTimeout: 5 * time.Second,
+			Proxy: http.ProxyFromEnvironment,
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			d.redirected = true
