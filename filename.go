@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 )
 
-// GetFilename is returns default file name from a URL.
+// GetFilename it returns default file name from a URL.
 func GetFilename(URL string) string {
 
 	u, err := url.Parse(URL)
