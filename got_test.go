@@ -183,6 +183,11 @@ func downloadChunksTest(t *testing.T, url string, size int64) {
 
 	info, err := d.GetInfo()
 
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
 	if size != info.Length {
 		t.Error("length and file size doesn't match")
 	}
@@ -229,7 +234,7 @@ func downloadNotFoundTest(t *testing.T, url string) {
 	_, err := got.New(url, tmpFile)
 
 	if err == nil {
-		t.Error("It sould have an error")
+		t.Error("It should have an error")
 		return
 	}
 }
@@ -260,7 +265,7 @@ func downloadHeadNotSupported(t *testing.T, url string) {
 
 	if *info != (got.Info{}) {
 
-		t.Error("It sould have a empty Info{}")
+		t.Error("It should have a empty Info{}")
 	}
 }
 
