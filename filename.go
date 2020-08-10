@@ -1,23 +1,21 @@
 package got
 
 import (
+	"net/url"
 	"path/filepath"
-	"strings"
 )
 
-func GetFilename(url string) string {
-	if strings.HasSuffix(url, "/") {
-		return "index"
-	}
-	basename := filepath.Base(url)
+func GetFilename(URL string) string {
 
-	// find start of GET-parameters
-	getparam := strings.Index(basename, "?")
-	if getparam > 0 {
-		return basename[:getparam]
+	u, err := url.Parse(URL)
+
+	if err != nil {
+		return "got_output"
 	}
 
-	if getparam == 0 {
+	basename := filepath.Base(u.Path)
+
+	if basename == "/" {
 		return "index"
 	}
 
