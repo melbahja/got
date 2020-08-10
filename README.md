@@ -67,12 +67,17 @@ go get github.com/melbahja/got/cmd/got
 
 ## Command Line Tool Usage
 
+#### Simple usage:
+```bash
+got https://example.com/file.mp4
+```
 
+#### Or you can specify destination path:
 ```bash
 got --out /path/to/save https://example.com/file.mp4
 ```
 
-To see all available flags for advanced usage you can type:
+#### To see all available flags type:
 ```bash
 got --help
 ```
@@ -89,7 +94,7 @@ import "github.com/melbahja/got"
 
 func main() {
 
-	dl, err := got.New("https://example.com/file.mp4", "/path/to/save")
+    dl, err := got.New("https://example.com/file.mp4", "/path/to/save")
 
     if err != nil {
     	// handle the error!
