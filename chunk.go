@@ -7,7 +7,7 @@ import (
 	"os"
 )
 
-// Download chunk.
+// Chunk is a part of file.
 type Chunk struct {
 
 	// Progress to report written bytes.
@@ -28,7 +28,7 @@ type Chunk struct {
 // Download a chunk, and report to Progress, it returns error if any!
 func (c *Chunk) Download(URL string, client *http.Client, dest *os.File) (err error) {
 
-	req, err := http.NewRequest("GET", URL, nil)
+	req, err := NewRequest("GET", URL)
 
 	if err != nil {
 		return err
@@ -41,7 +41,6 @@ func (c *Chunk) Download(URL string, client *http.Client, dest *os.File) (err er
 	}
 
 	req.Header.Set("Range", contentRange)
-	req.Header.Set("User-Agent", DEFAULT_USER_AGENT)
 
 	res, err := client.Do(req)
 
