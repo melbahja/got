@@ -7,16 +7,17 @@ import (
 
 type (
 
-	// Download progress.
+	// Progress can be used to show download progress to the user.
 	Progress struct {
 		Size int64
-		mu   sync.RWMutex
+		mu   sync.Mutex
 	}
 
-	// Progress report func.
+	// ProgressFunc to show progress state, called based on Download interval.
 	ProgressFunc func(size int64, total int64, d *Download)
 )
 
+// Run runs ProgressFunc based on interval if ProgressFunc set.
 func (p *Progress) Run(d *Download) {
 
 	if d.ProgressFunc != nil {
