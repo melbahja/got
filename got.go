@@ -73,9 +73,6 @@ type (
 		// Progress...
 		progress *Progress
 
-		// Chunk merge index.
-		index int
-
 		// Sync mutex.
 		mu sync.RWMutex
 	}
@@ -191,6 +188,7 @@ func (d *Download) Init() error {
 			Start:    startRange,
 			End:      endRange,
 			Progress: d.progress,
+			Done: make(chan struct{}),
 		})
 	}
 
@@ -312,46 +310,31 @@ func (d *Download) merge(echan *chan error, done *chan bool) {
 
 	defer file.Close()
 
-	chunksLen := len(d.chunks)
+	for i := range d.chunks {
+		<-d.chunks[i].Done
 
-	for {
-
-		for i := range d.chunks {
-
-			d.mu.RLock()
-			if d.chunks[i].Downloaded && d.chunks[i].Merged == false && i == d.index {
-
-				chunk, err := os.Open(d.chunks[i].Path)
-
-				if err != nil {
-					*echan <- err
-					return
-				}
-
-				_, err = io.Copy(file, chunk)
-
-				if err != nil {
-					*echan <- err
-					return
-				}
-
-				go chunk.Close()
-
-				// Sync dest file.
-				file.Sync()
-
-				d.chunks[i].Merged = true
-				d.index++
-			}
-			d.mu.RUnlock()
-
-			// done, all chunks merged.
-			if d.index == chunksLen {
-				*done <- true
-				return
-			}
+		chunk, err := os.Open(d.chunks[i].Path)
+		if err != nil {
+			*echan <- err
+			return
 		}
+
+		_, err = io.Copy(file, chunk)
+		if err != nil {
+			*echan <- err
+			return
+		}
+
+		if err = chunk.Close(); err != nil {
+			*echan <- err
+			return
+		}
+
+		// Sync dest file.
+		file.Sync()
 	}
+
+	*done <- true
 }
 
 // Download chunks
@@ -388,10 +371,8 @@ func (d *Download) dl(echan *chan error) {
 			// Download chunk.
 			*echan <- d.chunks[i].Download(d.URL, d.client, chunk)
 
-			d.mu.Lock()
 			d.chunks[i].Path = chunk.Name()
-			d.chunks[i].Downloaded = true
-			d.mu.Unlock()
+			close(d.chunks[i].Done)
 
 			<-max
 		}(i)
