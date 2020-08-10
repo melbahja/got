@@ -95,7 +95,7 @@ func (d *Download) Init() error {
 			MaxIdleConns:        10,
 			IdleConnTimeout:     30 * time.Second,
 			TLSHandshakeTimeout: 5 * time.Second,
-			Proxy: http.ProxyFromEnvironment,
+			Proxy:               http.ProxyFromEnvironment,
 		},
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
 			d.redirected = true
@@ -188,7 +188,7 @@ func (d *Download) Init() error {
 			Start:    startRange,
 			End:      endRange,
 			Progress: d.progress,
-			Done: make(chan struct{}),
+			Done:     make(chan struct{}),
 		})
 	}
 
