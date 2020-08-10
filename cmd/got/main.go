@@ -37,6 +37,10 @@ func main() {
 		log.Fatal("Empty download url.")
 	}
 
+	if *dest == "" {
+		*dest = got.GetFilename(url)
+	}
+
 	d := got.Download{
 		URL:  url,
 		Dest: *dest,
