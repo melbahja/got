@@ -6,13 +6,14 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
 
 type (
 
-	// Downloadable URL info.
+	// Info of the download url.
 	Info struct {
 
 		// File content length.
@@ -25,25 +26,25 @@ type (
 		Redirected bool
 	}
 
-	// Got Download.
+	// Download represents the download URL.
 	Download struct {
 
 		// Download file info.
 		*Info
 
-		// Progress func called based on Interval.
+		// Progress func.
 		ProgressFunc
 
-		// URL to download
+		// URL to download.
 		URL string
 
-		// File destination
+		// File destination.
 		Dest string
 
 		// Progress interval in ms.
 		Interval int
 
-		// Split file chunk by size in bytes.
+		// Split file into chunks by ChunkSize in bytes.
 		ChunkSize int64
 
 		// Set maximum chunk size.
@@ -61,27 +62,25 @@ type (
 		// Chunks temp dir.
 		temp string
 
-		// Donwload file chunks.
+		// Download file chunks.
 		chunks []*Chunk
 
 		// Http client.
 		client *http.Client
 
-		// Is the URL redirected to different location.
+		// Is the URL redirected to a different location.
 		redirected bool
 
 		// Progress...
 		progress *Progress
 
 		// Sync mutex.
-		mu sync.RWMutex
+		mu sync.Mutex
 	}
 )
 
-const DEFAULT_USER_AGENT = "Got/1.0"
-
-// Check Download and split file to chunks and set defaults,
-// you should call Init first then call Start
+// Init set defaults and split file into chunks and gets Info,
+// you should call Init before Start
 func (d *Download) Init() error {
 
 	var (
@@ -199,8 +198,8 @@ func (d *Download) Init() error {
 func (d *Download) Start() (err error) {
 
 	var (
-		okChan  chan bool  = make(chan bool, 1)
-		errChan chan error = make(chan error)
+		doneChan chan bool  = make(chan bool, 1)
+		errChan  chan error = make(chan error)
 	)
 
 	// Create a new temp dir for this download.
@@ -240,7 +239,7 @@ func (d *Download) Start() (err error) {
 	go d.dl(&errChan)
 
 	// Merge chunks.
-	go d.merge(&errChan, &okChan)
+	go d.merge(&errChan, &doneChan)
 
 	// Wait for chunks...
 	for {
@@ -255,12 +254,12 @@ func (d *Download) Start() (err error) {
 
 			break
 
-		case <-okChan:
+		case <-doneChan:
 
 			d.StopProgress = true
 
 			if d.ProgressFunc != nil {
-				d.ProgressFunc(d.Info.Length, d.Info.Length, d)
+				d.ProgressFunc(d.progress.Size, d.Info.Length, d)
 			}
 
 			return nil
@@ -270,25 +269,29 @@ func (d *Download) Start() (err error) {
 	return nil
 }
 
-// Get url info.
+// GetInfo gets Info, it returns error if status code > 500 or 404.
 func (d *Download) GetInfo() (*Info, error) {
-	req, err := http.NewRequest("HEAD", d.URL, nil)
+
+	req, err := NewRequest("HEAD", d.URL)
+
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("User-Agent", DEFAULT_USER_AGENT)
+
 	res, err := d.client.Do(req)
+
 	if err != nil {
 		return nil, err
 	}
 
-	if res.StatusCode < 200 || res.StatusCode > 299 {
-		// When HEAD request not supported.
-		if res.StatusCode == http.StatusMethodNotAllowed {
+	if res.StatusCode < 200 || res.StatusCode >= 400 {
 
+		// On 4xx HEAD request (work around for #3).
+		if res.StatusCode != 404 && res.StatusCode >= 400 && res.StatusCode < 500 {
 			return &Info{}, nil
 		}
-		return nil, fmt.Errorf("response status code is not ok: %d", res.StatusCode)
+
+		return nil, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
 	}
 
 	return &Info{
@@ -311,24 +314,23 @@ func (d *Download) merge(echan *chan error, done *chan bool) {
 	defer file.Close()
 
 	for i := range d.chunks {
+
 		<-d.chunks[i].Done
 
 		chunk, err := os.Open(d.chunks[i].Path)
+
 		if err != nil {
 			*echan <- err
 			return
 		}
 
-		_, err = io.Copy(file, chunk)
-		if err != nil {
+		if _, err = io.Copy(file, chunk); err != nil {
 			*echan <- err
 			return
 		}
 
-		if err = chunk.Close(); err != nil {
-			*echan <- err
-			return
-		}
+		// Non-blocking chunk close.
+		go chunk.Close()
 
 		// Sync dest file.
 		file.Sync()
@@ -358,7 +360,7 @@ func (d *Download) dl(echan *chan error) {
 
 			defer swg.Done()
 
-			chunk, err := os.Create(fmt.Sprintf("%s/chunk-%d", d.temp, i))
+			chunk, err := os.Create(filepath.Join(d.temp, fmt.Sprintf("chunk-%d", i)))
 
 			if err != nil {
 				*echan <- err
