@@ -22,9 +22,7 @@ type Chunk struct {
 	// Path name where this chunk downloaded.
 	Path string
 
-	Downloaded bool
-
-	Merged bool
+	Done chan struct{}
 }
 
 // Download a chunk, and report to Progress, it returns error if any!
