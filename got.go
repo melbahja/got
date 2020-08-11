@@ -73,9 +73,6 @@ type (
 
 		// Progress...
 		progress *Progress
-
-		// Sync mutex.
-		mu sync.Mutex
 	}
 )
 
@@ -103,9 +100,7 @@ func (d *Download) Init() error {
 	}
 
 	// Init progress.
-	d.progress = &Progress{
-		mu: d.mu,
-	}
+	d.progress = &Progress{}
 
 	// Set default interval.
 	if d.Interval == 0 {
@@ -196,7 +191,6 @@ func (d *Download) Init() error {
 
 // Start downloading.
 func (d *Download) Start() (err error) {
-
 	var (
 		doneChan chan bool  = make(chan bool, 1)
 		errChan  chan error = make(chan error)
@@ -243,25 +237,18 @@ func (d *Download) Start() (err error) {
 
 	// Wait for chunks...
 	for {
-
 		select {
-
 		case err := <-errChan:
-
 			if err != nil {
 				return err
 			}
-
 			break
-
 		case <-doneChan:
-
 			d.StopProgress = true
 
 			if d.ProgressFunc != nil {
 				d.ProgressFunc(d.progress.Size, d.Info.Length, d)
 			}
-
 			return nil
 		}
 	}
