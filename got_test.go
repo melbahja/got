@@ -202,7 +202,6 @@ func downloadTest(t *testing.T, url string, size int64) {
 		URL:          url,
 		Dest:         tmpFile,
 		Concurrency:  2,
-		StopProgress: true,
 	}
 
 	if err := d.Init(); err != nil {

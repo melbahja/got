@@ -1,14 +1,16 @@
 package got
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 type (
@@ -56,12 +58,6 @@ type (
 		// Max chunks to download at same time.
 		Concurrency int
 
-		// Stop progress loop.
-		StopProgress bool
-
-		// Chunks temp dir.
-		temp string
-
 		// Download file chunks.
 		chunks []*Chunk
 
@@ -73,9 +69,6 @@ type (
 
 		// Progress...
 		progress *Progress
-
-		// Sync mutex.
-		mu sync.Mutex
 	}
 )
 
@@ -103,9 +96,7 @@ func (d *Download) Init() error {
 	}
 
 	// Init progress.
-	d.progress = &Progress{
-		mu: d.mu,
-	}
+	d.progress = &Progress{}
 
 	// Set default interval.
 	if d.Interval == 0 {
@@ -196,25 +187,17 @@ func (d *Download) Init() error {
 
 // Start downloading.
 func (d *Download) Start() (err error) {
-
-	var (
-		doneChan chan bool  = make(chan bool, 1)
-		errChan  chan error = make(chan error)
-	)
-
 	// Create a new temp dir for this download.
-	d.temp, err = ioutil.TempDir("", "GotChunks")
-
-	// ...
+	temp, err := ioutil.TempDir("", "GotChunks")
 	if err != nil {
 		return err
 	}
+	defer os.RemoveAll(temp)
 
-	// Clean temp.
-	defer os.RemoveAll(d.temp)
-
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
 	// Run progress func.
-	go d.progress.Run(d)
+	go d.progress.Run(ctx, d)
 
 	// Partial content not supported,
 	// just download the file in one chunk.
@@ -235,37 +218,26 @@ func (d *Download) Start() (err error) {
 		return chunk.Download(d.URL, d.client, file)
 	}
 
+	eg, ctx := errgroup.WithContext(ctx)
+
 	// Download chunks.
-	go d.dl(&errChan)
+	eg.Go(func() error {
+		return d.dl(ctx, temp)
+	})
 
 	// Merge chunks.
-	go d.merge(&errChan, &doneChan)
+	eg.Go(func() error {
+		return d.merge(ctx)
+	})
 
 	// Wait for chunks...
-	for {
-
-		select {
-
-		case err := <-errChan:
-
-			if err != nil {
-				return err
-			}
-
-			break
-
-		case <-doneChan:
-
-			d.StopProgress = true
-
-			if d.ProgressFunc != nil {
-				d.ProgressFunc(d.progress.Size, d.Info.Length, d)
-			}
-
-			return nil
-		}
+	if err := eg.Wait(); err != nil {
+		return err
 	}
 
+	if d.ProgressFunc != nil {
+		d.ProgressFunc(d.progress.Size, d.Info.Length, d)
+	}
 	return nil
 }
 
@@ -302,31 +274,28 @@ func (d *Download) GetInfo() (*Info, error) {
 }
 
 // Merge downloaded chunks.
-func (d *Download) merge(echan *chan error, done *chan bool) {
-
+func (d *Download) merge(ctx context.Context) error {
 	file, err := os.Create(d.Dest)
-
 	if err != nil {
-		*echan <- err
-		return
+		return err
 	}
 
 	defer file.Close()
 
 	for i := range d.chunks {
-
-		<-d.chunks[i].Done
+		select {
+		case <-d.chunks[i].Done:
+		case <-ctx.Done():
+			return nil
+		}
 
 		chunk, err := os.Open(d.chunks[i].Path)
-
 		if err != nil {
-			*echan <- err
-			return
+			return err
 		}
 
 		if _, err = io.Copy(file, chunk); err != nil {
-			*echan <- err
-			return
+			return err
 		}
 
 		// Non-blocking chunk close.
@@ -335,52 +304,44 @@ func (d *Download) merge(echan *chan error, done *chan bool) {
 		// Sync dest file.
 		file.Sync()
 	}
-
-	*done <- true
+	return nil
 }
 
 // Download chunks
-func (d *Download) dl(echan *chan error) {
-
-	var (
-
-		// Waiting group.
-		swg sync.WaitGroup
-
-		// Concurrency limit.
-		max chan int = make(chan int, d.Concurrency)
-	)
+func (d *Download) dl(ctx context.Context, temp string) error {
+	eg, ctx := errgroup.WithContext(ctx)
+	// Concurrency limit.
+	max := make(chan int, d.Concurrency)
 
 	for i := 0; i < len(d.chunks); i++ {
-
 		max <- 1
-		swg.Add(1)
-
-		go func(i int) {
-
-			defer swg.Done()
-
-			chunk, err := os.Create(filepath.Join(d.temp, fmt.Sprintf("chunk-%d", i)))
+		i := i
+		eg.Go(func() error {
+			defer func() {
+				<-max
+			}()
+			chunk, err := os.Create(filepath.Join(temp, fmt.Sprintf("chunk-%d", i)))
 
 			if err != nil {
-				*echan <- err
-				return
+				return err
 			}
 
 			// Close chunk fd.
 			defer chunk.Close()
 
 			// Download chunk.
-			*echan <- d.chunks[i].Download(d.URL, d.client, chunk)
+			err = d.chunks[i].Download(d.URL, d.client, chunk)
+			if err != nil {
+				return err
+			}
 
 			d.chunks[i].Path = chunk.Name()
 			close(d.chunks[i].Done)
-
-			<-max
-		}(i)
+			return nil
+		})
 	}
 
-	swg.Wait()
+	return eg.Wait()
 }
 
 // New creates a new Download and calls Init.

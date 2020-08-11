@@ -45,7 +45,6 @@ func main() {
 		URL:  url,
 		Dest: *dest,
 		ProgressFunc: func(i int64, t int64, d *got.Download) {
-
 			fmt.Printf(
 				"\r\r\b Total Size: %s | Chunk Size: %s | Concurrency: %d | Progress: %s ",
 				humanize.Bytes(uint64(t)),
