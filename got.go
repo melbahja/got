@@ -58,9 +58,6 @@ type (
 		// Max chunks to download at same time.
 		Concurrency int
 
-		// Chunks temp dir.
-		temp string
-
 		// Download file chunks.
 		chunks []*Chunk
 
@@ -191,15 +188,11 @@ func (d *Download) Init() error {
 // Start downloading.
 func (d *Download) Start() (err error) {
 	// Create a new temp dir for this download.
-	d.temp, err = ioutil.TempDir("", "GotChunks")
-
-	// ...
+	temp, err := ioutil.TempDir("", "GotChunks")
 	if err != nil {
 		return err
 	}
-
-	// Clean temp.
-	defer os.RemoveAll(d.temp)
+	defer os.RemoveAll(temp)
 
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
@@ -229,7 +222,7 @@ func (d *Download) Start() (err error) {
 
 	// Download chunks.
 	eg.Go(func() error {
-		return d.dl(ctx)
+		return d.dl(ctx, temp)
 	})
 
 	// Merge chunks.
@@ -315,7 +308,7 @@ func (d *Download) merge(ctx context.Context) error {
 }
 
 // Download chunks
-func (d *Download) dl(ctx context.Context) error {
+func (d *Download) dl(ctx context.Context, temp string) error {
 	eg, ctx := errgroup.WithContext(ctx)
 	// Concurrency limit.
 	max := make(chan int, d.Concurrency)
@@ -327,7 +320,7 @@ func (d *Download) dl(ctx context.Context) error {
 			defer func() {
 				<-max
 			}()
-			chunk, err := os.Create(filepath.Join(d.temp, fmt.Sprintf("chunk-%d", i)))
+			chunk, err := os.Create(filepath.Join(temp, fmt.Sprintf("chunk-%d", i)))
 
 			if err != nil {
 				return err
