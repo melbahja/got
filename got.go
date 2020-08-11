@@ -102,11 +102,6 @@ func (d *Download) Init() error {
 		},
 	}
 
-	// Init progress.
-	d.progress = &Progress{
-		mu: d.mu,
-	}
-
 	// Set default interval.
 	if d.Interval == 0 {
 		d.Interval = 20
@@ -122,6 +117,12 @@ func (d *Download) Init() error {
 		return nil
 	}
 
+	// Init progress.
+	d.progress = &Progress{
+		mu: d.mu,
+		TotalSize: d.Info.Length,
+		start: time.Now(),
+	}
 	// Set concurrency default to 10.
 	if d.Concurrency == 0 {
 		d.Concurrency = 10
@@ -259,7 +260,8 @@ func (d *Download) Start() (err error) {
 			d.StopProgress = true
 
 			if d.ProgressFunc != nil {
-				d.ProgressFunc(d.progress.Size, d.Info.Length, d)
+				d.progress.CalculateSpeed(int64(d.Interval))
+				d.ProgressFunc(d.progress, d)
 			}
 
 			return nil

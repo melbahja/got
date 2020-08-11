@@ -3,10 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
-
 	"github.com/dustin/go-humanize"
 	"github.com/melbahja/got"
+	"log"
+	"time"
 )
 
 var (
@@ -44,14 +44,16 @@ func main() {
 	d := got.Download{
 		URL:  url,
 		Dest: *dest,
-		ProgressFunc: func(i int64, t int64, d *got.Download) {
-
+		ProgressFunc: func(p *got.Progress,d *got.Download) {
 			fmt.Printf(
-				"\r\r\b Total Size: %s | Chunk Size: %s | Concurrency: %d | Progress: %s ",
-				humanize.Bytes(uint64(t)),
+				"\r\r\b Total Size: %s | Chunk Size: %s | Concurrency: %d | Progress: %s |Total Cost:%s | AvgSpeed: %s/s | Speed: %s/s",
+				humanize.Bytes(uint64(p.TotalSize)),
 				humanize.Bytes(uint64(d.ChunkSize)),
 				d.Concurrency,
-				humanize.Bytes(uint64(i)),
+				humanize.Bytes(uint64(p.Size)),
+				p.TotalCost.Round(time.Second),
+				humanize.Bytes(uint64(p.AvgSpeed)),
+				humanize.Bytes(uint64(p.Speed)),
 			)
 		},
 		ChunkSize:   int64(*chunkSize),
