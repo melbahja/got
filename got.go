@@ -230,10 +230,10 @@ func (d *Download) Start() (err error) {
 	}
 
 	// Download chunks.
-	go d.dl(&errChan)
+	go d.dl(errChan)
 
 	// Merge chunks.
-	go d.merge(&errChan, &doneChan)
+	go d.merge(errChan, doneChan)
 
 	// Wait for chunks...
 	for {
@@ -289,12 +289,12 @@ func (d *Download) GetInfo() (*Info, error) {
 }
 
 // Merge downloaded chunks.
-func (d *Download) merge(echan *chan error, done *chan bool) {
+func (d *Download) merge(echan chan<- error, done chan<- bool) {
 
 	file, err := os.Create(d.Dest)
 
 	if err != nil {
-		*echan <- err
+		echan <- err
 		return
 	}
 
@@ -307,12 +307,12 @@ func (d *Download) merge(echan *chan error, done *chan bool) {
 		chunk, err := os.Open(d.chunks[i].Path)
 
 		if err != nil {
-			*echan <- err
+			echan <- err
 			return
 		}
 
 		if _, err = io.Copy(file, chunk); err != nil {
-			*echan <- err
+			echan <- err
 			return
 		}
 
@@ -323,11 +323,11 @@ func (d *Download) merge(echan *chan error, done *chan bool) {
 		file.Sync()
 	}
 
-	*done <- true
+	done <- true
 }
 
 // Download chunks
-func (d *Download) dl(echan *chan error) {
+func (d *Download) dl(echan chan<- error) {
 
 	var (
 
@@ -350,7 +350,7 @@ func (d *Download) dl(echan *chan error) {
 			chunk, err := os.Create(filepath.Join(d.temp, fmt.Sprintf("chunk-%d", i)))
 
 			if err != nil {
-				*echan <- err
+				echan <- err
 				return
 			}
 
@@ -358,7 +358,7 @@ func (d *Download) dl(echan *chan error) {
 			defer chunk.Close()
 
 			// Download chunk.
-			*echan <- d.chunks[i].Download(d.URL, d.client, chunk)
+			echan <- d.chunks[i].Download(d.URL, d.client, chunk)
 
 			d.chunks[i].Path = chunk.Name()
 			close(d.chunks[i].Done)
