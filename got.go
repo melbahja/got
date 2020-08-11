@@ -34,17 +34,11 @@ type (
 		// Download file info.
 		*Info
 
-		// Progress func.
-		ProgressFunc
-
 		// URL to download.
 		URL string
 
 		// File destination.
 		Dest string
-
-		// Progress interval in ms.
-		Interval int
 
 		// Split file into chunks by ChunkSize in bytes.
 		ChunkSize int64
@@ -58,6 +52,12 @@ type (
 		// Max chunks to download at same time.
 		Concurrency int
 
+		// Progress...
+		Progress *Progress
+
+		// Progress interval in ms.
+		Interval int
+
 		// Download file chunks.
 		chunks []*Chunk
 
@@ -66,9 +66,6 @@ type (
 
 		// Is the URL redirected to a different location.
 		redirected bool
-
-		// Progress...
-		progress *Progress
 	}
 )
 
@@ -95,9 +92,6 @@ func (d *Download) Init() error {
 		},
 	}
 
-	// Init progress.
-	d.progress = &Progress{}
-
 	// Set default interval.
 	if d.Interval == 0 {
 		d.Interval = 20
@@ -106,6 +100,16 @@ func (d *Download) Init() error {
 	// Get URL info.
 	if d.Info, err = d.GetInfo(); err != nil {
 		return err
+	}
+
+	// Set default progress.
+	if d.Progress == nil {
+
+		d.Progress = &Progress{
+			startedAt: time.Now(),
+			Interval:  d.Interval,
+			TotalSize: d.Info.Length,
+		}
 	}
 
 	// Partial content not supported 😢!
@@ -177,7 +181,7 @@ func (d *Download) Init() error {
 		d.chunks = append(d.chunks, &Chunk{
 			Start:    startRange,
 			End:      endRange,
-			Progress: d.progress,
+			Progress: d.Progress,
 			Done:     make(chan struct{}),
 		})
 	}
@@ -187,6 +191,7 @@ func (d *Download) Init() error {
 
 // Start downloading.
 func (d *Download) Start() (err error) {
+
 	// Create a new temp dir for this download.
 	temp, err := ioutil.TempDir("", "GotChunks")
 	if err != nil {
@@ -196,8 +201,9 @@ func (d *Download) Start() (err error) {
 
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
+
 	// Run progress func.
-	go d.progress.Run(ctx, d)
+	go d.Progress.Run(ctx, d)
 
 	// Partial content not supported,
 	// just download the file in one chunk.
@@ -212,7 +218,7 @@ func (d *Download) Start() (err error) {
 		defer file.Close()
 
 		chunk := &Chunk{
-			Progress: d.progress,
+			Progress: d.Progress,
 		}
 
 		return chunk.Download(d.URL, d.client, file)
@@ -235,9 +241,11 @@ func (d *Download) Start() (err error) {
 		return err
 	}
 
-	if d.ProgressFunc != nil {
-		d.ProgressFunc(d.progress.Size, d.Info.Length, d)
+	// Update progress output after chunks finished.
+	if d.Progress.ProgressFunc != nil {
+		d.Progress.ProgressFunc(d.Progress, d)
 	}
+
 	return nil
 }
 
@@ -283,6 +291,7 @@ func (d *Download) merge(ctx context.Context) error {
 	defer file.Close()
 
 	for i := range d.chunks {
+
 		select {
 		case <-d.chunks[i].Done:
 		case <-ctx.Done():
@@ -309,17 +318,24 @@ func (d *Download) merge(ctx context.Context) error {
 
 // Download chunks
 func (d *Download) dl(ctx context.Context, temp string) error {
+
 	eg, ctx := errgroup.WithContext(ctx)
+
 	// Concurrency limit.
 	max := make(chan int, d.Concurrency)
 
 	for i := 0; i < len(d.chunks); i++ {
+
 		max <- 1
 		i := i
+
 		eg.Go(func() error {
+
 			defer func() {
 				<-max
 			}()
+
+			// Create chunk in temp dir.
 			chunk, err := os.Create(filepath.Join(temp, fmt.Sprintf("chunk-%d", i)))
 
 			if err != nil {
