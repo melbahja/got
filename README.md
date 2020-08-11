@@ -57,9 +57,22 @@ sys	0m2.056s
 
 ## Installation
 
-You can download compiled version from [releases](https://github.com/melbahja/got/releases).
+#### Download and install the latest [release](https://github.com/melbahja/got/releases):
+```bash
+# go to tmp dir.
+cd /tmp
 
-Or Go ahead compile it yourself:
+# Download latest version.
+curl -sfL https://git.io/getgot | sh
+
+# Make the binary executable.
+chmod +x /tmp/bin/got
+
+# Move the binary to your PATH
+sudo mv /tmp/bin/got /usr/bin/got
+```
+
+#### Or Go ahead compile it yourself:
 ```bash
 go get github.com/melbahja/got/cmd/got
 ```
