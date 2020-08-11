@@ -199,9 +199,9 @@ func downloadTest(t *testing.T, url string, size int64) {
 	defer clean(tmpFile)
 
 	d := &got.Download{
-		URL:          url,
-		Dest:         tmpFile,
-		Concurrency:  2,
+		URL:         url,
+		Dest:        tmpFile,
+		Concurrency: 2,
 	}
 
 	if err := d.Init(); err != nil {

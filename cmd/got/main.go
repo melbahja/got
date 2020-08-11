@@ -3,10 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	"log"
-
 	"github.com/dustin/go-humanize"
 	"github.com/melbahja/got"
+	"log"
+	"time"
 )
 
 var (
@@ -36,6 +36,7 @@ func main() {
 	if url = flag.Arg(0); url == "" {
 		log.Fatal("Empty download url.")
 	}
+
 	if !(url[:7] == "http://" || url[:8] == "https://") {
 		url = "https://" + url
 	}
@@ -47,15 +48,6 @@ func main() {
 	d := got.Download{
 		URL:  url,
 		Dest: *dest,
-		ProgressFunc: func(i int64, t int64, d *got.Download) {
-			fmt.Printf(
-				"\r\r\b Total Size: %s | Chunk Size: %s | Concurrency: %d | Progress: %s ",
-				humanize.Bytes(uint64(t)),
-				humanize.Bytes(uint64(d.ChunkSize)),
-				d.Concurrency,
-				humanize.Bytes(uint64(i)),
-			)
-		},
 		ChunkSize:   int64(*chunkSize),
 		Interval:    100,
 		Concurrency: *concurrency,
@@ -65,9 +57,24 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Set progress func to update cli output.
+	d.Progress.ProgressFunc = func(p *got.Progress, d *got.Download) {
+
+		fmt.Printf(
+			"\r\r\bTotal: %s | Chunk: %s | Concurrency: %d | Received: %s | Time: %s | Avg: %s/s | Speed: %s/s",
+			humanize.Bytes(uint64(p.TotalSize)),
+			humanize.Bytes(uint64(d.ChunkSize)),
+			d.Concurrency,
+			humanize.Bytes(uint64(p.Size)),
+			p.TotalCost().Round(time.Second),
+			humanize.Bytes(p.AvgSpeed()),
+			humanize.Bytes(p.Speed()),
+		)
+	}
+
 	if err := d.Start(); err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("| Done!")
+	fmt.Println(" | Done!")
 }
