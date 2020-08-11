@@ -8,17 +8,10 @@ import (
 // GetFilename it returns default file name from a URL.
 func GetFilename(URL string) string {
 
-	u, err := url.Parse(URL)
+	if u, err := url.Parse(URL); err == nil && filepath.Ext(u.Path) != "" {
 
-	if err != nil {
-		return "got_output"
+		return filepath.Base(u.Path)
 	}
 
-	basename := filepath.Base(u.Path)
-
-	if basename == "/" {
-		return "index"
-	}
-
-	return basename
+	return "got.output"
 }

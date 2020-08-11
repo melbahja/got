@@ -7,7 +7,7 @@ import (
 func TestGetFilename(t *testing.T) {
 	for url, expected := range TestUrls {
 		if result := GetFilename(url); result != expected {
-			t.Errorf("expected name '%s' from url '%s', but got '%s'", expected, url, result)
+			t.Errorf("Expected name '%s' from url '%s', but got '%s'", expected, url, result)
 		}
 	}
 }
@@ -15,8 +15,10 @@ func TestGetFilename(t *testing.T) {
 var TestUrls = map[string]string{
 	"http://example.com/some/path/video.mp4?hash=deadbeef&expires=123456789": "video.mp4",
 	"http://example.com/some/path/video.mp4":                                 "video.mp4",
-	"http://example.com/":                                                    "index",
 	"http://example.com/index.html":                                          "index.html",
-	"http://example.com/?page=about":                                         "index",
+	"http://example.com/":                                                    "got.output",
+	"http://example.com/?page=about":                                         "got.output",
+	"http://example.com/some/path/":                                          "got.output",
+	"http://example.com/some/path/?page=about":                               "got.output",
 	"http://example.com/about.php?session=asdf":                              "about.php",
 }
