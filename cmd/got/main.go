@@ -36,6 +36,9 @@ func main() {
 	if url = flag.Arg(0); url == "" {
 		log.Fatal("Empty download url.")
 	}
+	if !(url[:7] == "http://" || url[:8] == "https://") {
+		url = "https://" + url
+	}
 
 	if *dest == "" {
 		*dest = got.GetFilename(url)
