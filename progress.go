@@ -1,6 +1,7 @@
 package got
 
 import (
+	"context"
 	"sync/atomic"
 	"time"
 )
@@ -17,13 +18,13 @@ type (
 )
 
 // Run runs ProgressFunc based on interval if ProgressFunc set.
-func (p *Progress) Run(d *Download) {
-
+func (p *Progress) Run(ctx context.Context, d *Download) {
 	if d.ProgressFunc != nil {
-
 		for {
-			if d.StopProgress {
-				break
+			select {
+			case <-ctx.Done():
+				return
+			default:
 			}
 
 			d.ProgressFunc(atomic.LoadInt64(&p.Size), d.Info.Length, d)

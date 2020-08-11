@@ -1,6 +1,7 @@
 package got
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -55,9 +56,6 @@ type (
 
 		// Max chunks to download at same time.
 		Concurrency int
-
-		// Stop progress loop.
-		StopProgress bool
 
 		// Chunks temp dir.
 		temp string
@@ -207,8 +205,9 @@ func (d *Download) Start() (err error) {
 	// Clean temp.
 	defer os.RemoveAll(d.temp)
 
+	ctx, cancel := context.WithCancel(context.TODO())
 	// Run progress func.
-	go d.progress.Run(d)
+	go d.progress.Run(ctx, d)
 
 	// Partial content not supported,
 	// just download the file in one chunk.
@@ -244,7 +243,7 @@ func (d *Download) Start() (err error) {
 			}
 			break
 		case <-doneChan:
-			d.StopProgress = true
+			cancel()
 
 			if d.ProgressFunc != nil {
 				d.ProgressFunc(d.progress.Size, d.Info.Length, d)
