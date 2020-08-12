@@ -159,6 +159,8 @@ func (d *Download) Init() error {
 
 	chunksLen = d.Length / d.ChunkSize
 
+	d.chunks = make([]Chunk, 0, chunksLen)
+
 	// Set chunk ranges.
 	for ; i < chunksLen; i++ {
 
