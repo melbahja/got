@@ -13,7 +13,7 @@ type (
 		ProgressFunc
 
 		Size, TotalSize uint64
-		Interval        int
+		Interval        uint64
 
 		lastSize  uint64
 		startedAt time.Time
@@ -47,7 +47,7 @@ func (p *Progress) Run(ctx context.Context, d *Download) {
 
 // Speed returns download speed.
 func (p *Progress) Speed() uint64 {
-	return uint64((atomic.LoadUint64(&p.Size) - atomic.LoadUint64(&p.lastSize)) / uint64(p.Interval) * 1000)
+	return (atomic.LoadUint64(&p.Size) - atomic.LoadUint64(&p.lastSize)) / p.Interval * 1000
 }
 
 // AvgSpeed returns average download speed.

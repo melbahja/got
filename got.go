@@ -56,10 +56,10 @@ type (
 		Progress *Progress
 
 		// Progress interval in ms.
-		Interval int
+		Interval uint64
 
 		// Download file chunks.
-		chunks []*Chunk
+		chunks []Chunk
 
 		// Http client.
 		client *http.Client
@@ -178,7 +178,7 @@ func (d *Download) Init() error {
 			endRange = 0
 		}
 
-		d.chunks = append(d.chunks, &Chunk{
+		d.chunks = append(d.chunks, Chunk{
 			Start:    startRange,
 			End:      endRange,
 			Progress: d.Progress,
