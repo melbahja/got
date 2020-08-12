@@ -12,10 +12,10 @@ type (
 	Progress struct {
 		ProgressFunc
 
-		Size, TotalSize int64
-		Interval        int
+		Size, TotalSize uint64
+		Interval        uint64
 
-		lastSize  int64
+		lastSize  uint64
 		startedAt time.Time
 	}
 
@@ -38,7 +38,7 @@ func (p *Progress) Run(ctx context.Context, d *Download) {
 			p.ProgressFunc(p, d)
 
 			// Update last size
-			atomic.StoreInt64(&p.lastSize, atomic.LoadInt64(&p.Size))
+			atomic.StoreUint64(&p.lastSize, atomic.LoadUint64(&p.Size))
 
 			time.Sleep(time.Duration(d.Interval) * time.Millisecond)
 		}
@@ -47,14 +47,14 @@ func (p *Progress) Run(ctx context.Context, d *Download) {
 
 // Speed returns download speed.
 func (p *Progress) Speed() uint64 {
-	return uint64((atomic.LoadInt64(&p.Size) - atomic.LoadInt64(&p.lastSize)) / int64(p.Interval) * 1000)
+	return (atomic.LoadUint64(&p.Size) - atomic.LoadUint64(&p.lastSize)) / p.Interval * 1000
 }
 
 // AvgSpeed returns average download speed.
 func (p *Progress) AvgSpeed() uint64 {
 
 	if totalMills := p.TotalCost().Milliseconds(); totalMills > 0 {
-		return uint64(atomic.LoadInt64(&p.Size) / totalMills * 1000)
+		return uint64(atomic.LoadUint64(&p.Size) / uint64(totalMills) * 1000)
 	}
 
 	return 0
@@ -68,6 +68,6 @@ func (p *Progress) TotalCost() time.Duration {
 // Write updates progress size.
 func (p *Progress) Write(b []byte) (int, error) {
 	n := len(b)
-	atomic.AddInt64(&p.Size, int64(n))
+	atomic.AddUint64(&p.Size, uint64(n))
 	return n, nil
 }

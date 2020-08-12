@@ -19,7 +19,7 @@ type (
 	Info struct {
 
 		// File content length.
-		Length int64
+		Length uint64
 
 		// Supports partial content?
 		Rangeable bool
@@ -32,7 +32,7 @@ type (
 	Download struct {
 
 		// Download file info.
-		*Info
+		Info
 
 		// URL to download.
 		URL string
@@ -41,25 +41,25 @@ type (
 		Dest string
 
 		// Split file into chunks by ChunkSize in bytes.
-		ChunkSize int64
+		ChunkSize uint64
 
 		// Set maximum chunk size.
-		MaxChunkSize int64
+		MaxChunkSize uint64
 
 		// Set min chunk size.
-		MinChunkSize int64
+		MinChunkSize uint64
 
 		// Max chunks to download at same time.
-		Concurrency int
+		Concurrency uint
 
 		// Progress...
 		Progress *Progress
 
 		// Progress interval in ms.
-		Interval int
+		Interval uint64
 
 		// Download file chunks.
-		chunks []*Chunk
+		chunks []Chunk
 
 		// Http client.
 		client *http.Client
@@ -75,7 +75,7 @@ func (d *Download) Init() error {
 
 	var (
 		err                                error
-		i, startRange, endRange, chunksLen int64
+		i, startRange, endRange, chunksLen uint64
 	)
 
 	// Set http client
@@ -108,12 +108,12 @@ func (d *Download) Init() error {
 		d.Progress = &Progress{
 			startedAt: time.Now(),
 			Interval:  d.Interval,
-			TotalSize: d.Info.Length,
+			TotalSize: d.Length,
 		}
 	}
 
 	// Partial content not supported 😢!
-	if d.Info.Rangeable == false || d.Info.Length == 0 {
+	if d.Rangeable == false || d.Length == 0 {
 		return nil
 	}
 
@@ -125,7 +125,7 @@ func (d *Download) Init() error {
 	// Set default chunk size
 	if d.ChunkSize == 0 {
 
-		d.ChunkSize = d.Info.Length / int64(d.Concurrency)
+		d.ChunkSize = d.Length / uint64(d.Concurrency)
 
 		// if chunk size >= 102400000 bytes set default to (ChunkSize / 2)
 		if d.ChunkSize >= 102400000 {
@@ -137,8 +137,8 @@ func (d *Download) Init() error {
 
 			d.MinChunkSize = 1000000
 
-			if d.MinChunkSize > d.Info.Length {
-				d.MinChunkSize = d.Info.Length / 2
+			if d.MinChunkSize > d.Length {
+				d.MinChunkSize = d.Length / 2
 			}
 		}
 
@@ -152,12 +152,14 @@ func (d *Download) Init() error {
 			d.ChunkSize = d.MaxChunkSize
 		}
 
-	} else if d.ChunkSize > d.Info.Length {
+	} else if d.ChunkSize > d.Length {
 
-		d.ChunkSize = d.Info.Length / 2
+		d.ChunkSize = d.Length / 2
 	}
 
-	chunksLen = d.Info.Length / d.ChunkSize
+	chunksLen = d.Length / d.ChunkSize
+
+	d.chunks = make([]Chunk, 0, chunksLen)
 
 	// Set chunk ranges.
 	for ; i < chunksLen; i++ {
@@ -174,11 +176,11 @@ func (d *Download) Init() error {
 			break
 		}
 
-		if endRange > d.Info.Length || i == (chunksLen-1) {
+		if endRange > d.Length || i == (chunksLen-1) {
 			endRange = 0
 		}
 
-		d.chunks = append(d.chunks, &Chunk{
+		d.chunks = append(d.chunks, Chunk{
 			Start:    startRange,
 			End:      endRange,
 			Progress: d.Progress,
@@ -199,7 +201,7 @@ func (d *Download) Start() (err error) {
 	}
 	defer os.RemoveAll(temp)
 
-	ctx, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// Run progress func.
@@ -238,6 +240,8 @@ func (d *Download) Start() (err error) {
 
 	// Wait for chunks...
 	if err := eg.Wait(); err != nil {
+		// In case of an error, destination file should be removed
+		_ = os.Remove(d.Dest)
 		return err
 	}
 
@@ -250,32 +254,32 @@ func (d *Download) Start() (err error) {
 }
 
 // GetInfo gets Info, it returns error if status code > 500 or 404.
-func (d *Download) GetInfo() (*Info, error) {
+func (d *Download) GetInfo() (Info, error) {
 
 	req, err := NewRequest("HEAD", d.URL)
 
 	if err != nil {
-		return nil, err
+		return Info{}, err
 	}
 
 	res, err := d.client.Do(req)
 
 	if err != nil {
-		return nil, err
+		return Info{}, err
 	}
 
 	if res.StatusCode < 200 || res.StatusCode >= 400 {
 
 		// On 4xx HEAD request (work around for #3).
 		if res.StatusCode != 404 && res.StatusCode >= 400 && res.StatusCode < 500 {
-			return &Info{}, nil
+			return Info{}, nil
 		}
 
-		return nil, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
+		return Info{}, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
 	}
 
-	return &Info{
-		Length:     res.ContentLength,
+	return Info{
+		Length:     uint64(res.ContentLength),
 		Rangeable:  res.Header.Get("accept-ranges") == "bytes",
 		Redirected: d.redirected,
 	}, nil
@@ -327,7 +331,7 @@ func (d *Download) dl(ctx context.Context, temp string) error {
 	for i := 0; i < len(d.chunks); i++ {
 
 		max <- 1
-		i := i
+		current := i
 
 		eg.Go(func() error {
 
@@ -336,7 +340,7 @@ func (d *Download) dl(ctx context.Context, temp string) error {
 			}()
 
 			// Create chunk in temp dir.
-			chunk, err := os.Create(filepath.Join(temp, fmt.Sprintf("chunk-%d", i)))
+			chunk, err := os.Create(filepath.Join(temp, fmt.Sprintf("chunk-%d", current)))
 
 			if err != nil {
 				return err
@@ -346,13 +350,13 @@ func (d *Download) dl(ctx context.Context, temp string) error {
 			defer chunk.Close()
 
 			// Download chunk.
-			err = d.chunks[i].Download(d.URL, d.client, chunk)
+			err = d.chunks[current].Download(d.URL, d.client, chunk)
 			if err != nil {
 				return err
 			}
 
-			d.chunks[i].Path = chunk.Name()
-			close(d.chunks[i].Done)
+			d.chunks[current].Path = chunk.Name()
+			close(d.chunks[current].Done)
 			return nil
 		})
 	}

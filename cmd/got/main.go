@@ -3,18 +3,19 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/dustin/go-humanize"
-	"github.com/melbahja/got"
 	"log"
 	"time"
+
+	"github.com/dustin/go-humanize"
+	"github.com/melbahja/got"
 )
 
 var (
 	url         string
 	version     string
 	dest        = flag.String("out", "", "Downloaded file destination.")
-	chunkSize   = flag.Int("size", 0, "Maximum chunk size in bytes.")
-	concurrency = flag.Int("concurrency", 10, "Maximum chunks to download at the same time.")
+	chunkSize   = flag.Uint64("size", 0, "Maximum chunk size in bytes.")
+	concurrency = flag.Uint("concurrency", 10, "Maximum chunks to download at the same time.")
 )
 
 func init() {
@@ -46,9 +47,9 @@ func main() {
 	}
 
 	d := got.Download{
-		URL:  url,
-		Dest: *dest,
-		ChunkSize:   int64(*chunkSize),
+		URL:         url,
+		Dest:        *dest,
+		ChunkSize:   *chunkSize,
 		Interval:    100,
 		Concurrency: *concurrency,
 	}
@@ -62,10 +63,10 @@ func main() {
 
 		fmt.Printf(
 			"\r\r\bTotal: %s | Chunk: %s | Concurrency: %d | Received: %s | Time: %s | Avg: %s/s | Speed: %s/s",
-			humanize.Bytes(uint64(p.TotalSize)),
-			humanize.Bytes(uint64(d.ChunkSize)),
+			humanize.Bytes(p.TotalSize),
+			humanize.Bytes(d.ChunkSize),
 			d.Concurrency,
-			humanize.Bytes(uint64(p.Size)),
+			humanize.Bytes(p.Size),
 			p.TotalCost().Round(time.Second),
 			humanize.Bytes(p.AvgSpeed()),
 			humanize.Bytes(p.Speed()),

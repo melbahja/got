@@ -14,10 +14,10 @@ type Chunk struct {
 	*Progress
 
 	// Chunk start pos.
-	Start int64
+	Start uint64
 
 	// Chunk end.
-	End int64
+	End uint64
 
 	// Path name where this chunk downloaded.
 	Path string
