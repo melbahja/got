@@ -287,6 +287,7 @@ func (d *Download) GetInfo() (Info, error) {
 
 // Merge downloaded chunks.
 func (d *Download) merge(ctx context.Context) error {
+
 	file, err := os.Create(d.Dest)
 	if err != nil {
 		return err
