@@ -239,7 +239,7 @@ func (d *Download) Start() (err error) {
 	// Wait for chunks...
 	if err := eg.Wait(); err != nil {
 		// In case of an error, destination file should be removed
-		os.Remove(d.Dest)
+		_ = os.Remove(d.Dest)
 		return err
 	}
 
