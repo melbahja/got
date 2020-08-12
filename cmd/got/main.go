@@ -4,8 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
+	"github.com/apoorvam/goterminal"
 	"github.com/dustin/go-humanize"
 	"github.com/melbahja/got"
 )
@@ -58,24 +60,33 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Goterm writer.
+	writer := goterminal.New(os.Stdout)
+
 	// Set progress func to update cli output.
 	d.Progress.ProgressFunc = func(p *got.Progress, d *got.Download) {
 
-		fmt.Printf(
-			"\r\r\bTotal: %s | Chunk: %s | Concurrency: %d | Received: %s | Time: %s | Avg: %s/s | Speed: %s/s",
-			humanize.Bytes(p.TotalSize),
-			humanize.Bytes(d.ChunkSize),
-			d.Concurrency,
+		writer.Clear()
+
+		fmt.Fprintf(
+			writer,
+			"Downloading: (%s/%s) | Time: %s | Avg: %s/s | Speed: %s/s | Chunk: %s | Concurrency: %d\n",
 			humanize.Bytes(p.Size),
+			humanize.Bytes(p.TotalSize),
 			p.TotalCost().Round(time.Second),
 			humanize.Bytes(p.AvgSpeed()),
 			humanize.Bytes(p.Speed()),
+			humanize.Bytes(d.ChunkSize),
+			d.Concurrency,
 		)
+
+		writer.Print()
 	}
 
 	if err := d.Start(); err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println(" | Done!")
+	writer.Reset()
+	fmt.Println("Done!")
 }
