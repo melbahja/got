@@ -2,14 +2,13 @@ package got_test
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
 	"time"
-
-	"io/ioutil"
 
 	"github.com/melbahja/got"
 )
@@ -79,7 +78,7 @@ func TestGot(t *testing.T) {
 	t.Run("info", func(t *testing.T) {
 
 		expect := got.Info{
-			Length:     stat.Size(),
+			Length:     uint64(stat.Size()),
 			Rangeable:  true,
 			Redirected: false,
 		}
@@ -93,7 +92,7 @@ func TestGot(t *testing.T) {
 		t.Run("downloadChunksTest", func(t *testing.T) {
 
 			// test info size and chunks.
-			downloadChunksTest(t, httpt.URL+"/file1", stat.Size())
+			downloadChunksTest(t, httpt.URL+"/file1", uint64(stat.Size()))
 		})
 
 		t.Run("downloadTest", func(t *testing.T) {
@@ -147,7 +146,7 @@ func getInfoTest(t *testing.T, url string, expect got.Info) {
 		return
 	}
 
-	if expect != *info {
+	if expect != info {
 
 		t.Error("invalid info")
 	}
@@ -168,7 +167,7 @@ func initTest(t *testing.T, url string) {
 	}
 }
 
-func downloadChunksTest(t *testing.T, url string, size int64) {
+func downloadChunksTest(t *testing.T, url string, size uint64) {
 
 	tmpFile := createTemp()
 	defer clean(tmpFile)
@@ -262,7 +261,7 @@ func downloadHeadNotSupported(t *testing.T, url string) {
 		return
 	}
 
-	if *info != (got.Info{}) {
+	if info != (got.Info{}) {
 
 		t.Error("It should have a empty Info{}")
 	}

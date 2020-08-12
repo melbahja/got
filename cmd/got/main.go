@@ -3,10 +3,11 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/dustin/go-humanize"
-	"github.com/melbahja/got"
 	"log"
 	"time"
+
+	"github.com/dustin/go-humanize"
+	"github.com/melbahja/got"
 )
 
 var (
@@ -14,7 +15,7 @@ var (
 	version     string
 	dest        = flag.String("out", "", "Downloaded file destination.")
 	chunkSize   = flag.Int("size", 0, "Maximum chunk size in bytes.")
-	concurrency = flag.Int("concurrency", 10, "Maximum chunks to download at the same time.")
+	concurrency = flag.Uint("concurrency", 10, "Maximum chunks to download at the same time.")
 )
 
 func init() {
@@ -46,9 +47,9 @@ func main() {
 	}
 
 	d := got.Download{
-		URL:  url,
-		Dest: *dest,
-		ChunkSize:   int64(*chunkSize),
+		URL:         url,
+		Dest:        *dest,
+		ChunkSize:   uint64(*chunkSize),
 		Interval:    100,
 		Concurrency: *concurrency,
 	}
