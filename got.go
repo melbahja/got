@@ -2,6 +2,7 @@ package got
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -12,6 +13,9 @@ import (
 
 	"golang.org/x/sync/errgroup"
 )
+
+// ErrDownloadAborted - When download is aborted by the OS before it is completed, ErrDownloadAborted will be triggered
+var ErrDownloadAborted error = errors.New("Operation aborted")
 
 type (
 
@@ -192,7 +196,7 @@ func (d *Download) Init() error {
 }
 
 // Start downloading.
-func (d *Download) Start() (err error) {
+func (d *Download) Start(ctx context.Context) (err error) {
 
 	// Create a new temp dir for this download.
 	temp, err := ioutil.TempDir("", "GotChunks")
@@ -200,63 +204,69 @@ func (d *Download) Start() (err error) {
 		return err
 	}
 	defer os.RemoveAll(temp)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	// Run progress func.
-	go d.Progress.Run(ctx, d)
-
-	// Partial content not supported,
-	// just download the file in one chunk.
-	if len(d.chunks) == 0 {
-
-		file, err := os.Create(d.Dest)
-
+	select {
+	case <-ctx.Done():
+		err = os.Remove(d.Dest)
 		if err != nil {
 			return err
 		}
+		return ErrDownloadAborted
+	default:
+		// Run progress func.
+		go d.Progress.Run(ctx, d)
 
-		defer file.Close()
+		// Partial content not supported,
+		// just download the file in one chunk.
+		if len(d.chunks) == 0 {
 
-		chunk := &Chunk{
-			Progress: d.Progress,
+			file, err := os.Create(d.Dest)
+
+			if err != nil {
+				return err
+			}
+
+			defer file.Close()
+
+			chunk := &Chunk{
+				Progress: d.Progress,
+			}
+
+			return chunk.Download(d.URL, d.client, file)
 		}
 
-		return chunk.Download(d.URL, d.client, file)
+		eg, ctx := errgroup.WithContext(ctx)
+
+		// Download chunks.
+		eg.Go(func() error {
+			return d.dl(ctx, temp)
+		})
+
+		// Merge chunks.
+		eg.Go(func() error {
+			return d.merge(ctx)
+		})
+
+		// Wait for chunks...
+		if err := eg.Wait(); err != nil {
+			// In case of an error, destination file should be removed
+			_ = os.Remove(d.Dest)
+			return err
+		}
+
+		// Update progress output after chunks finished.
+		if d.Progress.ProgressFunc != nil {
+			d.Progress.ProgressFunc(d.Progress, d)
+		}
+
+		return nil
 	}
 
-	eg, ctx := errgroup.WithContext(ctx)
-
-	// Download chunks.
-	eg.Go(func() error {
-		return d.dl(ctx, temp)
-	})
-
-	// Merge chunks.
-	eg.Go(func() error {
-		return d.merge(ctx)
-	})
-
-	// Wait for chunks...
-	if err := eg.Wait(); err != nil {
-		// In case of an error, destination file should be removed
-		_ = os.Remove(d.Dest)
-		return err
-	}
-
-	// Update progress output after chunks finished.
-	if d.Progress.ProgressFunc != nil {
-		d.Progress.ProgressFunc(d.Progress, d)
-	}
-
-	return nil
 }
 
 // GetInfo gets Info, it returns error if status code > 500 or 404.
 func (d *Download) GetInfo() (Info, error) {
 
-	req, err := NewRequest("HEAD", d.URL)
+	req, err := NewRequest(http.MethodHead, d.URL)
 
 	if err != nil {
 		return Info{}, err
@@ -268,7 +278,7 @@ func (d *Download) GetInfo() (Info, error) {
 		return Info{}, err
 	}
 
-	if res.StatusCode < 200 || res.StatusCode >= 400 {
+	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusBadRequest {
 
 		// On 4xx HEAD request (work around for #3).
 		if res.StatusCode != 404 && res.StatusCode >= 400 && res.StatusCode < 500 {

@@ -1,10 +1,13 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/apoorvam/goterminal"
@@ -48,6 +51,19 @@ func main() {
 		*dest = got.GetFilename(url)
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
+	exitSigChannel := make(chan os.Signal)
+	defer close(exitSigChannel)
+
+	signal.Notify(exitSigChannel, syscall.SIGINT, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGTERM)
+
+	go func() {
+		<-exitSigChannel
+		signal.Stop(exitSigChannel)
+		cancel()
+	}()
+
 	d := got.Download{
 		URL:         url,
 		Dest:        *dest,
@@ -83,7 +99,7 @@ func main() {
 		writer.Print()
 	}
 
-	if err := d.Start(); err != nil {
+	if err := d.Start(ctx); err != nil {
 		log.Fatal(err)
 	}
 

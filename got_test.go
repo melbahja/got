@@ -1,6 +1,7 @@
 package got_test
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -39,7 +40,7 @@ func TestGot(t *testing.T) {
 
 		case "/file2":
 
-			if r.Method == "HEAD" {
+			if r.Method == http.MethodHead {
 				w.WriteHeader(http.StatusMethodNotAllowed)
 				return
 			}
@@ -84,6 +85,10 @@ func TestGot(t *testing.T) {
 		}
 
 		getInfoTest(t, httpt.URL+"/file1", expect)
+	})
+
+	t.Run("cancel", func(t *testing.T) {
+		downloadCancelTest(t, httpt.URL+"/file1")
 	})
 
 	// download tests.
@@ -209,7 +214,7 @@ func downloadTest(t *testing.T, url string, size int64) {
 		return
 	}
 
-	if err := d.Start(); err != nil {
+	if err := d.Start(context.Background()); err != nil {
 		t.Error(err)
 	}
 
@@ -286,7 +291,7 @@ func downloadPartialContentNotSupportedTest(t *testing.T, url string) {
 		t.Errorf("Expect length to be 0, but got %d", d.Info.Length)
 	}
 
-	if err := d.Start(); err != nil {
+	if err := d.Start(context.Background()); err != nil {
 		t.Error(err)
 	}
 
@@ -317,7 +322,7 @@ func fileContentTest(t *testing.T, url string) {
 		return
 	}
 
-	if err := d.Start(); err != nil {
+	if err := d.Start(context.Background()); err != nil {
 		t.Error(err)
 		return
 	}
@@ -342,6 +347,39 @@ func fileContentTest(t *testing.T, url string) {
 		fmt.Println("b", string(dlFile))
 		t.Error("Corrupted file")
 	}
+}
+
+func downloadCancelTest(t *testing.T, url string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+
+	tmpFile := createTemp()
+	defer clean(tmpFile)
+	defer cancel()
+	d := &got.Download{
+		URL:         url,
+		Dest:        tmpFile,
+		Concurrency: 2,
+	}
+
+	if err := d.Init(); err != nil {
+
+		t.Error(err)
+		return
+	}
+
+	if err := d.Start(ctx); err != nil {
+
+		if err != got.ErrDownloadAborted {
+			t.Errorf("Download aborter error not triggered")
+			return
+		}
+		_, err := os.Stat(tmpFile)
+		if !os.IsNotExist(err) {
+			t.Errorf("Download file is not deleted")
+			return
+		}
+	}
+
 }
 
 func createTemp() string {
