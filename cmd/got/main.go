@@ -3,8 +3,12 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/apoorvam/goterminal"
@@ -15,6 +19,8 @@ import (
 var (
 	url         string
 	version     string
+	batchFile   = flag.String("bf", "", "Batch download file from one list in file.")
+	saveDir     = flag.String("save", "", "Downloaded file save destination.")
 	dest        = flag.String("out", "", "Downloaded file destination.")
 	chunkSize   = flag.Uint64("size", 0, "Maximum chunk size in bytes.")
 	concurrency = flag.Uint("concurrency", 10, "Maximum chunks to download at the same time.")
@@ -36,24 +42,80 @@ func main() {
 
 	flag.Parse()
 
-	if url = flag.Arg(0); url == "" {
+	if url = flag.Arg(0); url == "" && *batchFile == "" {
 		log.Fatal("Empty download url.")
 	}
 
-	if !(url[:7] == "http://" || url[:8] == "https://") {
+	urls := []string{}
+	if url != "" && !(url[:7] == "http://" || url[:8] == "https://") {
+		url = strings.TrimSpace(url)
 		url = "https://" + url
 	}
 
-	if *dest == "" {
-		*dest = got.GetFilename(url)
+	if url != "" {
+		url = strings.TrimSpace(url)
+		urls = append(urls, url)
 	}
+
+	if *batchFile != "" {
+		fileData, err := ioutil.ReadFile(*batchFile)
+		if err == nil {
+			for _, line := range strings.Split(string(fileData), "\n") {
+				line = strings.TrimSpace(line)
+				if line != "" && !(line[:7] == "http://" || line[:8] == "https://") {
+					line = "https://" + line
+				}
+				if line != "" {
+					urls = append(urls, line)
+				}
+			}
+		}
+	}
+
+	if len(urls) < 1 {
+		log.Fatal("Empty download url.")
+	}
+
+	t := len(urls)
+	if t < 1 {
+		t = 1
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(t)
+
+	for _, curl := range urls {
+		go func(curl string) {
+			defer wg.Done()
+			if *dest == "" {
+				*dest = got.GetFilename(curl)
+			}
+
+			if *saveDir != "" {
+				*dest = filepath.Join(*saveDir, *dest)
+				pDir := filepath.Dir(*dest)
+				if pDir != "." && pDir != "./" {
+					if _, err := os.Stat(pDir); os.IsNotExist(err) {
+						os.MkdirAll(pDir, os.ModePerm)
+					}
+				}
+			}
+			initDownloader(curl, *dest, *chunkSize, *concurrency)
+		}(curl)
+	}
+	wg.Wait()
+	os.Exit(0)
+}
+
+func initDownloader(url, dest string, chunkSize uint64, concurrency uint) {
+	fmt.Println("download from ", url, " to ", dest, " starting...")
 
 	d := got.Download{
 		URL:         url,
-		Dest:        *dest,
-		ChunkSize:   *chunkSize,
+		Dest:        dest,
+		ChunkSize:   chunkSize,
 		Interval:    100,
-		Concurrency: *concurrency,
+		Concurrency: concurrency,
 	}
 
 	if err := d.Init(); err != nil {
@@ -70,7 +132,8 @@ func main() {
 
 		fmt.Fprintf(
 			writer,
-			"Downloading: (%s/%s) | Time: %s | Avg: %s/s | Speed: %s/s | Chunk: %s | Concurrency: %d\n",
+			"Downloading %s: (%s/%s) | Time: %s | Avg: %s/s | Speed: %s/s | Chunk: %s | Concurrency: %d\n",
+			d.URL,
 			humanize.Bytes(p.Size),
 			humanize.Bytes(p.TotalSize),
 			p.TotalCost().Round(time.Second),
@@ -88,5 +151,5 @@ func main() {
 	}
 
 	writer.Reset()
-	fmt.Println("Done!")
+	fmt.Println("download from ", url, " to ", dest, " Done!")
 }
