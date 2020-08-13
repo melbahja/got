@@ -6,13 +6,13 @@ import (
 
 func TestChunksLength(t *testing.T) {
 
-	d := &Download{
-		URL:          "http://speedtest.ftp.otenet.gr/files/test10Mb.db",
+	d, err := New(Config{
+		URL:  "http://speedtest.ftp.otenet.gr/files/test10Mb.db",
 		MinChunkSize: 5242870,
-	}
+	})
 
-	if err := d.Init(); err != nil {
-
+	// init
+	if err != nil {
 		t.Error(err)
 		return
 	}

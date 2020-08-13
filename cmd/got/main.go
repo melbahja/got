@@ -53,26 +53,28 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	exitSigChannel := make(chan os.Signal)
-	defer close(exitSigChannel)
 
-	signal.Notify(exitSigChannel, syscall.SIGINT, syscall.SIGKILL, syscall.SIGQUIT, syscall.SIGTERM)
+	exitSigChannel := make(chan os.Signal)
+
+	signal.Notify(exitSigChannel, syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM)
 
 	go func() {
 		<-exitSigChannel
-		signal.Stop(exitSigChannel)
+		log.Println("Exiting...")
 		cancel()
+		signal.Stop(exitSigChannel)
+		os.Exit(0)
 	}()
 
-	d := got.Download{
+	d, err := got.New(got.Config{
+		Context:     ctx,
 		URL:         url,
 		Dest:        *dest,
 		ChunkSize:   *chunkSize,
 		Interval:    100,
 		Concurrency: *concurrency,
-	}
-
-	if err := d.Init(); err != nil {
+	})
+	if err != nil {
 		log.Fatal(err)
 	}
 
@@ -99,10 +101,11 @@ func main() {
 		writer.Print()
 	}
 
-	if err := d.Start(ctx); err != nil {
+	if err := d.Start(); err != nil {
 		log.Fatal(err)
 	}
 
 	writer.Reset()
 	fmt.Println("Done!")
+	close(exitSigChannel)
 }

@@ -137,7 +137,10 @@ func getInfoTest(t *testing.T, url string, expect got.Info) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	d, err := got.New(url, tmpFile)
+	d, err := got.New(got.Config{
+		URL:  url,
+		Dest: tmpFile,
+	})
 
 	if err != nil {
 		t.Error(err)
@@ -162,12 +165,12 @@ func initTest(t *testing.T, url string) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	d := got.Download{
+	_, err := got.New(got.Config{
 		URL:  url,
 		Dest: tmpFile,
-	}
+	})
 
-	if err := d.Init(); err != nil {
+	if err != nil {
 		t.Error(err)
 	}
 }
@@ -177,7 +180,10 @@ func downloadChunksTest(t *testing.T, url string, size uint64) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	d, err := got.New(url, tmpFile)
+	d, err := got.New(got.Config{
+		URL:  url,
+		Dest: tmpFile,
+	})
 
 	if err != nil {
 
@@ -202,19 +208,18 @@ func downloadTest(t *testing.T, url string, size int64) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	d := &got.Download{
-		URL:         url,
-		Dest:        tmpFile,
-		Concurrency: 2,
-	}
+	d, err := got.New(got.Config{
+		URL:  url,
+		Dest: tmpFile,
+	})
 
-	if err := d.Init(); err != nil {
+	if err != nil {
 
 		t.Error(err)
 		return
 	}
 
-	if err := d.Start(context.Background()); err != nil {
+	if err := d.Start(); err != nil {
 		t.Error(err)
 	}
 
@@ -234,7 +239,10 @@ func downloadNotFoundTest(t *testing.T, url string) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	_, err := got.New(url, tmpFile)
+	_, err := got.New(got.Config{
+		URL:  url,
+		Dest: tmpFile,
+	})
 
 	if err == nil {
 		t.Error("It should have an error")
@@ -247,13 +255,13 @@ func downloadHeadNotSupported(t *testing.T, url string) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	d := &got.Download{
+	d, err := got.New(got.Config{
 		URL:  url,
 		Dest: tmpFile,
-	}
+	})
 
 	// init
-	if err := d.Init(); err != nil {
+	if err != nil {
 		t.Error(err)
 		return
 	}
@@ -267,7 +275,6 @@ func downloadHeadNotSupported(t *testing.T, url string) {
 	}
 
 	if info != (got.Info{}) {
-
 		t.Error("It should have a empty Info{}")
 	}
 }
@@ -277,12 +284,13 @@ func downloadPartialContentNotSupportedTest(t *testing.T, url string) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	d := &got.Download{
+	d, err := got.New(got.Config{
 		URL:  url,
 		Dest: tmpFile,
-	}
+	})
 
-	if err := d.Init(); err != nil {
+	// init
+	if err != nil {
 		t.Error(err)
 		return
 	}
@@ -291,7 +299,7 @@ func downloadPartialContentNotSupportedTest(t *testing.T, url string) {
 		t.Errorf("Expect length to be 0, but got %d", d.Info.Length)
 	}
 
-	if err := d.Start(context.Background()); err != nil {
+	if err := d.Start(); err != nil {
 		t.Error(err)
 	}
 
@@ -311,18 +319,18 @@ func fileContentTest(t *testing.T, url string) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	d := &got.Download{
+	d, err := got.New(got.Config{
 		URL:       url,
 		Dest:      tmpFile,
 		ChunkSize: 10,
-	}
+	})
 
-	if err := d.Init(); err != nil {
+	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	if err := d.Start(context.Background()); err != nil {
+	if err := d.Start(); err != nil {
 		t.Error(err)
 		return
 	}
@@ -355,24 +363,19 @@ func downloadCancelTest(t *testing.T, url string) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 	defer cancel()
-	d := &got.Download{
-		URL:         url,
-		Dest:        tmpFile,
-		Concurrency: 2,
-	}
 
-	if err := d.Init(); err != nil {
+	d, err := got.New(got.Config{
+		Context: ctx,
+		URL:     url,
+		Dest:    tmpFile,
+	})
 
+	// init
+	if err != nil {
 		t.Error(err)
 		return
 	}
-
-	if err := d.Start(ctx); err != nil {
-
-		if err != got.ErrDownloadAborted {
-			t.Errorf("Download aborter error not triggered")
-			return
-		}
+	if err := d.Start(); err != nil {
 		_, err := os.Stat(tmpFile)
 		if !os.IsNotExist(err) {
 			t.Errorf("Download file is not deleted")
