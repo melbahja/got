@@ -22,7 +22,7 @@ func GetFilename(URL string) string {
 			hcds := strings.Split(hcd[0], "=")
 			if len(hcds) > 1 {
 				if filename := hcds[1]; filename != "" {
-					return filename
+					return filepath.Base(filename)
 				}
 			}
 		}
