@@ -2,12 +2,14 @@ package got
 
 import (
 	"testing"
+
+	"golang.org/x/net/context"
 )
 
 func TestChunksLength(t *testing.T) {
 
-	d, err := New(Config{
-		URL:  "http://speedtest.ftp.otenet.gr/files/test10Mb.db",
+	d, err := New(context.Background(), Config{
+		URL:          "http://speedtest.ftp.otenet.gr/files/test10Mb.db",
 		MinChunkSize: 5242870,
 	})
 

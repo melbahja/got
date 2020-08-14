@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -19,8 +20,7 @@ var (
 	url         string
 	version     string
 	dest        = flag.String("out", "", "Downloaded file destination.")
-	chunkSize   = flag.Uint64("size", 0, "Maximum chunk size in bytes.")
-	concurrency = flag.Uint("concurrency", 10, "Maximum chunks to download at the same time.")
+	concurrency = flag.Uint("concurrency", uint(runtime.NumCPU()), "Maximum chunks to download at the same time.")
 )
 
 func init() {
@@ -53,7 +53,6 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-
 	exitSigChannel := make(chan os.Signal)
 
 	signal.Notify(exitSigChannel, syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM)
@@ -66,11 +65,9 @@ func main() {
 		os.Exit(0)
 	}()
 
-	d, err := got.New(got.Config{
-		Context:     ctx,
+	d, err := got.New(ctx, got.Config{
 		URL:         url,
 		Dest:        *dest,
-		ChunkSize:   *chunkSize,
 		Interval:    100,
 		Concurrency: *concurrency,
 	})
@@ -94,7 +91,7 @@ func main() {
 			p.TotalCost().Round(time.Second),
 			humanize.Bytes(p.AvgSpeed()),
 			humanize.Bytes(p.Speed()),
-			humanize.Bytes(d.ChunkSize),
+			humanize.Bytes(d.GetChunkSize()),
 			d.Concurrency,
 		)
 

@@ -45,7 +45,7 @@ func TestGot(t *testing.T) {
 				return
 			}
 
-			fmt.Fprint(w, "helloworld")
+			_, _ = fmt.Fprint(w, "helloworld")
 			return
 
 		case "/file4":
@@ -137,7 +137,7 @@ func getInfoTest(t *testing.T, url string, expect got.Info) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	d, err := got.New(got.Config{
+	d, err := got.New(context.Background(), got.Config{
 		URL:  url,
 		Dest: tmpFile,
 	})
@@ -165,7 +165,7 @@ func initTest(t *testing.T, url string) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	_, err := got.New(got.Config{
+	_, err := got.New(context.Background(), got.Config{
 		URL:  url,
 		Dest: tmpFile,
 	})
@@ -180,7 +180,7 @@ func downloadChunksTest(t *testing.T, url string, size uint64) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	d, err := got.New(got.Config{
+	d, err := got.New(context.Background(), got.Config{
 		URL:  url,
 		Dest: tmpFile,
 	})
@@ -208,7 +208,7 @@ func downloadTest(t *testing.T, url string, size int64) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	d, err := got.New(got.Config{
+	d, err := got.New(context.Background(), got.Config{
 		URL:  url,
 		Dest: tmpFile,
 	})
@@ -239,7 +239,7 @@ func downloadNotFoundTest(t *testing.T, url string) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	_, err := got.New(got.Config{
+	_, err := got.New(context.Background(), got.Config{
 		URL:  url,
 		Dest: tmpFile,
 	})
@@ -255,7 +255,7 @@ func downloadHeadNotSupported(t *testing.T, url string) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	d, err := got.New(got.Config{
+	d, err := got.New(context.Background(), got.Config{
 		URL:  url,
 		Dest: tmpFile,
 	})
@@ -284,7 +284,7 @@ func downloadPartialContentNotSupportedTest(t *testing.T, url string) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	d, err := got.New(got.Config{
+	d, err := got.New(context.Background(), got.Config{
 		URL:  url,
 		Dest: tmpFile,
 	})
@@ -319,10 +319,9 @@ func fileContentTest(t *testing.T, url string) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	d, err := got.New(got.Config{
-		URL:       url,
-		Dest:      tmpFile,
-		ChunkSize: 10,
+	d, err := got.New(context.Background(), got.Config{
+		URL:  url,
+		Dest: tmpFile,
 	})
 
 	if err != nil {
@@ -364,10 +363,9 @@ func downloadCancelTest(t *testing.T, url string) {
 	defer clean(tmpFile)
 	defer cancel()
 
-	d, err := got.New(got.Config{
-		Context: ctx,
-		URL:     url,
-		Dest:    tmpFile,
+	d, err := got.New(ctx, got.Config{
+		URL:  url,
+		Dest: tmpFile,
 	})
 
 	// init
@@ -376,9 +374,12 @@ func downloadCancelTest(t *testing.T, url string) {
 		return
 	}
 	if err := d.Start(); err != nil {
+		if err != got.ErrInterupted {
+			t.Error("Program is not interrupted")
+		}
 		_, err := os.Stat(tmpFile)
 		if !os.IsNotExist(err) {
-			t.Errorf("Download file is not deleted")
+			t.Error("Download file is not deleted")
 			return
 		}
 	}
@@ -399,6 +400,5 @@ func createTemp() string {
 }
 
 func clean(tmpFile string) {
-
-	os.Remove(tmpFile)
+	_ = os.Remove(tmpFile)
 }

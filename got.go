@@ -2,6 +2,7 @@ package got
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -13,71 +14,20 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-type (
-	Config struct {
-		// Context...
-		Context context.Context
+// ErrInterupted when user or system interrupts the program
+var ErrInterupted = errors.New("Interupted")
 
-		// URL to download.
-		URL string
-
-		// File destination.
-		Dest string
-
-		// Split file into chunks by ChunkSize in bytes.
-		ChunkSize uint64
-
-		// Set maximum chunk size.
-		MaxChunkSize uint64
-
-		// Set min chunk size.
-		MinChunkSize uint64
-
-		// Progress interval in ms.
-		Interval uint64
-
-		// Max chunks to download at same time.
-		Concurrency uint
-	}
-
-	// Info of the download url.
-	Info struct {
-
-		// File content length.
-		Length uint64
-
-		// Supports partial content?
-		Rangeable bool
-
-		// URL Redirected.
-		Redirected bool
-	}
-
-	// Download represents the download URL.
-	Download struct {
-		// Download file info.
-		Info
-
-		Config
-
-		// Progress...
-		Progress *Progress
-
-		// Download file chunks.
-		chunks []Chunk
-
-		// Http client.
-		client *http.Client
-
-		// Is the URL redirected to a different location.
-		redirected bool
-	}
-)
+// GetChunkSize gets size of individual chanck
+func (d *Download) GetChunkSize() uint64 {
+	return d.chunkSize
+}
 
 // Start downloading.
 func (d *Download) Start() (err error) {
 	stop := make(chan struct{})
+	errs := make(chan error)
 	defer close(stop)
+	defer close(errs)
 	// Create a new temp dir for this download.
 	temp, err := ioutil.TempDir("", "GotChunks")
 	if err != nil {
@@ -86,7 +36,7 @@ func (d *Download) Start() (err error) {
 	defer os.RemoveAll(temp)
 
 	// Run progress func.
-	go d.Progress.Run(d.Context, d)
+	go d.Progress.Run(d.ctx, d)
 
 	// Partial content not supported,
 	// just download the file in one chunk.
@@ -107,13 +57,11 @@ func (d *Download) Start() (err error) {
 		return chunk.Download(d.URL, d.client, file)
 	}
 
-	eg, ctx := errgroup.WithContext(d.Context)
-
 	go func() {
 		select {
-		case <-d.Context.Done():
+		case <-d.ctx.Done():
+			errs <- ErrInterupted
 			// System or user interrupted the program
-			_ = os.Remove(d.Dest)
 			return
 		case <-stop:
 			// Everything went ok, no interruptions
@@ -122,17 +70,17 @@ func (d *Download) Start() (err error) {
 	}()
 
 	// Download chunks.
-	eg.Go(func() error {
-		return d.dl(ctx, temp)
-	})
+	go func() {
+		if err := d.dl(d.ctx, temp); err != nil {
+			errs <- err
+		}
+	}()
 
 	// Merge chunks.
-	eg.Go(func() error {
-		return d.merge(ctx)
-	})
+	go func() { errs <- d.merge(d.ctx) }()
 
 	// Wait for chunks...
-	if err := eg.Wait(); err != nil {
+	if err := <-errs; err != nil {
 		// In case of an error, destination file should be removed
 		_ = os.Remove(d.Dest)
 		return err
@@ -191,27 +139,25 @@ func (d *Download) merge(ctx context.Context) error {
 	defer file.Close()
 
 	for i := range d.chunks {
-
 		select {
 		case <-d.chunks[i].Done:
+			chunk, err := os.Open(d.chunks[i].Path)
+			if err != nil {
+				return err
+			}
+
+			if _, err = io.Copy(file, chunk); err != nil {
+				return err
+			}
+
+			// Non-blocking chunk close.
+			go chunk.Close()
+
+			// Sync dest file.
+			_ = file.Sync()
 		case <-ctx.Done():
-			return nil
+			return ErrInterupted
 		}
-
-		chunk, err := os.Open(d.chunks[i].Path)
-		if err != nil {
-			return err
-		}
-
-		if _, err = io.Copy(file, chunk); err != nil {
-			return err
-		}
-
-		// Non-blocking chunk close.
-		go chunk.Close()
-
-		// Sync dest file.
-		_ = file.Sync()
 	}
 	return nil
 }
@@ -260,13 +206,43 @@ func (d *Download) dl(ctx context.Context, temp string) error {
 	return eg.Wait()
 }
 
+func (d *Download) setChunkSize() {
+	d.chunkSize = d.Length / uint64(d.Concurrency)
+
+	// if chunk size >= 102400000 bytes set default to (ChunkSize / 2)
+	if d.chunkSize >= 102400000 {
+		d.chunkSize = d.chunkSize / 2
+	}
+
+	// Set default min chunk size to 1m, or file size / 2
+	if d.MinChunkSize == 0 {
+
+		d.MinChunkSize = 1000000
+
+		if d.MinChunkSize > d.Length {
+			d.MinChunkSize = d.Length / 2
+		}
+	}
+
+	// if Chunk size < Min size set chunk size to min.
+	if d.chunkSize < d.MinChunkSize {
+		d.chunkSize = d.MinChunkSize
+	}
+
+	// Change ChunkSize if MaxChunkSize are set and ChunkSize > Max size
+	if d.MaxChunkSize > 0 && d.chunkSize > d.MaxChunkSize {
+		d.chunkSize = d.MaxChunkSize
+	}
+
+}
+
 // Init set defaults and split file into chunks and gets Info,
 // you should call Init before Start
 func (d *Download) init() error {
 
 	var (
-		err                                error
-		i, startRange, endRange, chunksLen uint64
+		err                  error
+		startRange, endRange uint64
 	)
 
 	// Set http client
@@ -313,50 +289,17 @@ func (d *Download) init() error {
 		d.Concurrency = 10
 	}
 
-	// Set default chunk size
-	if d.ChunkSize == 0 {
+	d.setChunkSize()
 
-		d.ChunkSize = d.Length / uint64(d.Concurrency)
-
-		// if chunk size >= 102400000 bytes set default to (ChunkSize / 2)
-		if d.ChunkSize >= 102400000 {
-			d.ChunkSize = d.ChunkSize / 2
-		}
-
-		// Set default min chunk size to 1m, or file size / 2
-		if d.MinChunkSize == 0 {
-
-			d.MinChunkSize = 1000000
-
-			if d.MinChunkSize > d.Length {
-				d.MinChunkSize = d.Length / 2
-			}
-		}
-
-		// if Chunk size < Min size set chunk size to min.
-		if d.ChunkSize < d.MinChunkSize {
-			d.ChunkSize = d.MinChunkSize
-		}
-
-		// Change ChunkSize if MaxChunkSize are set and ChunkSize > Max size
-		if d.MaxChunkSize > 0 && d.ChunkSize > d.MaxChunkSize {
-			d.ChunkSize = d.MaxChunkSize
-		}
-
-	} else if d.ChunkSize > d.Length {
-
-		d.ChunkSize = d.Length / 2
-	}
-
-	chunksLen = d.Length / d.ChunkSize
+	chunksLen := d.Length / d.chunkSize
 
 	d.chunks = make([]Chunk, 0, chunksLen)
 
 	// Set chunk ranges.
-	for ; i < chunksLen; i++ {
+	for i := uint64(0); i < chunksLen; i++ {
 
-		startRange = (d.ChunkSize * i) + i
-		endRange = startRange + d.ChunkSize
+		startRange = (d.chunkSize * i) + i
+		endRange = startRange + d.chunkSize
 
 		if i == 0 {
 
@@ -383,14 +326,15 @@ func (d *Download) init() error {
 }
 
 // New creates a new Download and calls Init.
-func New(cfg Config) (*Download, error) {
+func New(ctx context.Context, cfg Config) (*Download, error) {
+
+	if ctx == nil {
+		return nil, errors.New("Context is not provided")
+	}
 
 	d := &Download{
 		Config: cfg,
-	}
-
-	if d.Context == nil {
-		d.Context = context.Background()
+		ctx:    ctx,
 	}
 
 	if err := d.init(); err != nil {
