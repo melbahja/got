@@ -374,7 +374,7 @@ func downloadCancelTest(t *testing.T, url string) {
 		return
 	}
 	if err := d.Start(); err != nil {
-		if err != got.ErrInterupted {
+		if err != got.ErrDownloadAborted {
 			t.Error("Program is not interrupted")
 		}
 		_, err := os.Stat(tmpFile)

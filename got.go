@@ -14,8 +14,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// ErrInterupted when user or system interrupts the program
-var ErrInterupted = errors.New("Interupted")
+// ErrDownloadAborted - When download is aborted by the OS before it is completed, ErrDownloadAborted will be triggered
+var ErrDownloadAborted = errors.New("Operation aborted")
 
 // GetChunkSize gets size of individual chanck
 func (d *Download) GetChunkSize() uint64 {
@@ -60,7 +60,7 @@ func (d *Download) Start() (err error) {
 	go func() {
 		select {
 		case <-d.ctx.Done():
-			errs <- ErrInterupted
+			errs <- ErrDownloadAborted
 			// System or user interrupted the program
 			return
 		case <-stop:
@@ -156,7 +156,7 @@ func (d *Download) merge(ctx context.Context) error {
 			// Sync dest file.
 			_ = file.Sync()
 		case <-ctx.Done():
-			return ErrInterupted
+			return ErrDownloadAborted
 		}
 	}
 	return nil
