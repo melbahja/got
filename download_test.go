@@ -212,7 +212,7 @@ func downloadHeadNotSupported(t *testing.T) {
 		return
 	}
 
-	if d.Size() != 0 {
+	if d.TotalSize() != 0 {
 
 		t.Error("Size should be 0")
 	}
@@ -238,8 +238,8 @@ func downloadPartialContentNotSupportedTest(t *testing.T) {
 		return
 	}
 
-	if d.Size() != 0 {
-		t.Errorf("Expect length to be 0, but got %d", d.Size())
+	if d.TotalSize() != 0 {
+		t.Errorf("Expect length to be 0, but got %d", d.TotalSize())
 	}
 
 	if err := d.Start(); err != nil {
