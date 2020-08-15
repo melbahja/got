@@ -2,380 +2,85 @@ package got
 
 import (
 	"context"
-	"fmt"
-	"io"
-	"io/ioutil"
 	"net/http"
-	"os"
-	"path/filepath"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 )
 
-type (
+// DefaulUserAgent is the default Got user agent to send http requests.
+const DefaulUserAgent = "Got/1.0"
 
-	// Info of the download url.
-	Info struct {
+// NewRequest returns a new http.Request and error if any.
+func NewRequest(ctx context.Context, method, URL string) (req *http.Request, err error) {
 
-		// File content length.
-		Length uint64
-
-		// Supports partial content?
-		Rangeable bool
-
-		// URL Redirected.
-		Redirected bool
+	if req, err = http.NewRequestWithContext(ctx, method, URL, nil); err != nil {
+		return
 	}
 
-	// Download represents the download URL.
-	Download struct {
+	req.Header.Set("User-Agent", DefaulUserAgent)
+	return
+}
 
-		// Download file info.
-		Info
+// GetDefaultClient returns Got default http.Client
+func GetDefaultClient() *http.Client {
 
-		// URL to download.
-		URL string
-
-		// File destination.
-		Dest string
-
-		// Split file into chunks by ChunkSize in bytes.
-		ChunkSize uint64
-
-		// Set maximum chunk size.
-		MaxChunkSize uint64
-
-		// Set min chunk size.
-		MinChunkSize uint64
-
-		// Max chunks to download at same time.
-		Concurrency uint
-
-		// Progress...
-		Progress *Progress
-
-		// Progress interval in ms.
-		Interval uint64
-
-		// Download file chunks.
-		chunks []Chunk
-
-		// Http client.
-		client *http.Client
-
-		// Is the URL redirected to a different location.
-		redirected bool
-	}
-)
-
-// Init set defaults and split file into chunks and gets Info,
-// you should call Init before Start
-func (d *Download) Init() error {
-
-	var (
-		err                                error
-		i, startRange, endRange, chunksLen uint64
-	)
-
-	// Set http client
-	d.client = &http.Client{
+	return &http.Client{
 		Transport: &http.Transport{
 			MaxIdleConns:        10,
 			IdleConnTimeout:     30 * time.Second,
 			TLSHandshakeTimeout: 5 * time.Second,
 			Proxy:               http.ProxyFromEnvironment,
 		},
-		CheckRedirect: func(req *http.Request, via []*http.Request) error {
-			d.redirected = true
-			return nil
-		},
 	}
-
-	// Set default interval.
-	if d.Interval == 0 {
-		d.Interval = 20
-	}
-
-	// Get URL info.
-	if d.Info, err = d.GetInfo(); err != nil {
-		return err
-	}
-
-	// Set default progress.
-	if d.Progress == nil {
-
-		d.Progress = &Progress{
-			startedAt: time.Now(),
-			Interval:  d.Interval,
-			TotalSize: d.Length,
-		}
-	}
-
-	// Partial content not supported 😢!
-	if d.Rangeable == false || d.Length == 0 {
-		return nil
-	}
-
-	// Set concurrency default to 10.
-	if d.Concurrency == 0 {
-		d.Concurrency = 10
-	}
-
-	// Set default chunk size
-	if d.ChunkSize == 0 {
-
-		d.ChunkSize = d.Length / uint64(d.Concurrency)
-
-		// if chunk size >= 102400000 bytes set default to (ChunkSize / 2)
-		if d.ChunkSize >= 102400000 {
-			d.ChunkSize = d.ChunkSize / 2
-		}
-
-		// Set default min chunk size to 1m, or file size / 2
-		if d.MinChunkSize == 0 {
-
-			d.MinChunkSize = 1000000
-
-			if d.MinChunkSize > d.Length {
-				d.MinChunkSize = d.Length / 2
-			}
-		}
-
-		// if Chunk size < Min size set chunk size to min.
-		if d.ChunkSize < d.MinChunkSize {
-			d.ChunkSize = d.MinChunkSize
-		}
-
-		// Change ChunkSize if MaxChunkSize are set and ChunkSize > Max size
-		if d.MaxChunkSize > 0 && d.ChunkSize > d.MaxChunkSize {
-			d.ChunkSize = d.MaxChunkSize
-		}
-
-	} else if d.ChunkSize > d.Length {
-
-		d.ChunkSize = d.Length / 2
-	}
-
-	chunksLen = d.Length / d.ChunkSize
-
-	d.chunks = make([]Chunk, 0, chunksLen)
-
-	// Set chunk ranges.
-	for ; i < chunksLen; i++ {
-
-		startRange = (d.ChunkSize * i) + i
-		endRange = startRange + d.ChunkSize
-
-		if i == 0 {
-
-			startRange = 0
-
-		} else if d.chunks[i-1].End == 0 {
-
-			break
-		}
-
-		if endRange > d.Length || i == (chunksLen-1) {
-			endRange = 0
-		}
-
-		d.chunks = append(d.chunks, Chunk{
-			Start:    startRange,
-			End:      endRange,
-			Progress: d.Progress,
-			Done:     make(chan struct{}),
-		})
-	}
-
-	return nil
 }
 
-// Start downloading.
-func (d *Download) Start() (err error) {
+// Got holds got download config.
+type Got struct {
+	ProgressFunc
 
-	// Create a new temp dir for this download.
-	temp, err := ioutil.TempDir("", "GotChunks")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(temp)
+	Client *http.Client
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx context.Context
+}
 
-	// Run progress func.
-	go d.Progress.Run(ctx, d)
+// Download creates *Download item and runs it.
+func (g Got) Download(URL, dest string) error {
 
-	// Partial content not supported,
-	// just download the file in one chunk.
-	if len(d.chunks) == 0 {
-
-		file, err := os.Create(d.Dest)
-
-		if err != nil {
-			return err
-		}
-
-		defer file.Close()
-
-		chunk := &Chunk{
-			Progress: d.Progress,
-		}
-
-		return chunk.Download(d.URL, d.client, file)
-	}
-
-	eg, ctx := errgroup.WithContext(ctx)
-
-	// Download chunks.
-	eg.Go(func() error {
-		return d.dl(ctx, temp)
+	return g.Do(&Download{
+		ctx:    g.ctx,
+		URL:    URL,
+		Dest:   dest,
+		Client: g.Client,
 	})
+}
 
-	// Merge chunks.
-	eg.Go(func() error {
-		return d.merge(ctx)
-	})
+// Do inits and runs ProgressFunc if set and starts the Download.
+func (g Got) Do(dl *Download) error {
 
-	// Wait for chunks...
-	if err := eg.Wait(); err != nil {
-		// In case of an error, destination file should be removed
-		_ = os.Remove(d.Dest)
+	if err := dl.Init(); err != nil {
 		return err
 	}
 
-	// Update progress output after chunks finished.
-	if d.Progress.ProgressFunc != nil {
-		d.Progress.ProgressFunc(d.Progress, d)
+	if g.ProgressFunc != nil {
+
+		defer func() {
+			dl.StopProgress = true
+		}()
+
+		go dl.RunProgress(g.ProgressFunc)
 	}
 
-	return nil
+	return dl.Start()
 }
 
-// GetInfo gets Info, it returns error if status code > 500 or 404.
-func (d *Download) GetInfo() (Info, error) {
-
-	req, err := NewRequest("HEAD", d.URL)
-
-	if err != nil {
-		return Info{}, err
-	}
-
-	res, err := d.client.Do(req)
-
-	if err != nil {
-		return Info{}, err
-	}
-
-	if res.StatusCode < 200 || res.StatusCode >= 400 {
-
-		// On 4xx HEAD request (work around for #3).
-		if res.StatusCode != 404 && res.StatusCode >= 400 && res.StatusCode < 500 {
-			return Info{}, nil
-		}
-
-		return Info{}, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
-	}
-
-	return Info{
-		Length:     uint64(res.ContentLength),
-		Rangeable:  res.Header.Get("accept-ranges") == "bytes",
-		Redirected: d.redirected,
-	}, nil
+// New returns new *Got with default context and client.
+func New() *Got {
+	return NewWithContext(context.Background())
 }
 
-// Merge downloaded chunks.
-func (d *Download) merge(ctx context.Context) error {
-
-	file, err := os.Create(d.Dest)
-	if err != nil {
-		return err
+// NewWithContext wants Context and returns *Got with default http client.
+func NewWithContext(ctx context.Context) *Got {
+	return &Got{
+		ctx:    ctx,
+		Client: GetDefaultClient(),
 	}
-
-	defer file.Close()
-
-	for i := range d.chunks {
-
-		select {
-		case <-d.chunks[i].Done:
-		case <-ctx.Done():
-			return nil
-		}
-
-		chunk, err := os.Open(d.chunks[i].Path)
-		if err != nil {
-			return err
-		}
-
-		if _, err = io.Copy(file, chunk); err != nil {
-			return err
-		}
-
-		// Non-blocking chunk close.
-		go chunk.Close()
-
-		// Sync dest file.
-		file.Sync()
-	}
-	return nil
-}
-
-// Download chunks
-func (d *Download) dl(ctx context.Context, temp string) error {
-
-	eg, ctx := errgroup.WithContext(ctx)
-
-	// Concurrency limit.
-	max := make(chan int, d.Concurrency)
-
-	for i := 0; i < len(d.chunks); i++ {
-
-		max <- 1
-		current := i
-
-		eg.Go(func() error {
-
-			defer func() {
-				<-max
-			}()
-
-			// Create chunk in temp dir.
-			chunk, err := os.Create(filepath.Join(temp, fmt.Sprintf("chunk-%d", current)))
-
-			if err != nil {
-				return err
-			}
-
-			// Close chunk fd.
-			defer chunk.Close()
-
-			// Download chunk.
-			err = d.chunks[current].Download(d.URL, d.client, chunk)
-			if err != nil {
-				return err
-			}
-
-			d.chunks[current].Path = chunk.Name()
-			close(d.chunks[current].Done)
-			return nil
-		})
-	}
-
-	return eg.Wait()
-}
-
-// New creates a new Download and calls Init.
-func New(url string, dest string) (*Download, error) {
-
-	d := &Download{
-		URL:  url,
-		Dest: dest,
-	}
-
-	if err := d.Init(); err != nil {
-		return nil, err
-	}
-
-	return d, nil
 }
