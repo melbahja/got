@@ -9,10 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sync"
 	"sync/atomic"
 	"time"
-
-	"golang.org/x/sync/errgroup"
 )
 
 type (
@@ -225,11 +224,7 @@ func (d *Download) Start() error {
 	}()
 
 	// Download chunks.
-	go func() {
-		if err := d.dl(d.ctx, temp); err != nil {
-			errs <- err
-		}
-	}()
+	go d.dl(d.ctx, temp, errs)
 
 	// Merge chunks.
 	go func() {
@@ -331,50 +326,53 @@ func (d Download) IsRangeable() bool {
 }
 
 // Download chunks
-func (d *Download) dl(ctx context.Context, temp string) error {
+func (d *Download) dl(ctx context.Context, temp string, errc chan error) {
 
-	eg, ctx := errgroup.WithContext(ctx)
+	var (
+		// Wait group.
+		wg sync.WaitGroup
 
-	// Concurrency limit.
-	max := make(chan int, d.Concurrency)
+		// Concurrency limit.
+		max = make(chan int, d.Concurrency)
+	)
 
 	for i := 0; i < len(d.chunks); i++ {
 
 		max <- 1
-		current := i
+		wg.Add(1)
 
-		eg.Go(func() error {
+		go func(i int){
 
-			defer func() {
-				<-max
-			}()
+			defer wg.Done()
 
 			// Create chunk in temp dir.
-			chunk, err := os.Create(filepath.Join(temp, fmt.Sprintf("chunk-%d", current)))
+			chunk, err := os.Create(filepath.Join(temp, fmt.Sprintf("chunk-%d", i)))
 
 			if err != nil {
-				return err
+				errc <- err
+				return
 			}
 
 			// Close chunk fd.
 			defer chunk.Close()
 
 			// Download chunk.
-			if err = d.DownloadChunk(ctx, d.chunks[current], chunk); err != nil {
-				return err
+			if err = d.DownloadChunk(ctx, d.chunks[i], chunk); err != nil {
+				errc <- err
+				return
 			}
 
 			// Set chunk path name.
-			d.chunks[current].Path = chunk.Name()
+			d.chunks[i].Path = chunk.Name()
 
 			// Mark this chunk as downloaded.
-			close(d.chunks[current].Done)
+			close(d.chunks[i].Done)
 
-			return nil
-		})
+			<- max
+		}(i)
 	}
 
-	return eg.Wait()
+	wg.Wait()
 }
 
 // Merge downloaded chunks.
