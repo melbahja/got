@@ -8,7 +8,6 @@ func TestChunksLength(t *testing.T) {
 
 	d := &Download{
 		URL:          "http://speedtest.ftp.otenet.gr/files/test10Mb.db",
-		Dest:         "/tmp/ss",
 		MinChunkSize: 5242870,
 	}
 
