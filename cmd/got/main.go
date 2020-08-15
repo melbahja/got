@@ -11,6 +11,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"time"
+	"os/signal"
+	"syscall"
 
 	"github.com/apoorvam/goterminal"
 	"github.com/dustin/go-humanize"
@@ -18,10 +20,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-var (
-	version      string
-	errInterrupt = errors.New("Error signal interrupted")
-)
+var version string
 
 // TODO: handle signals
 // TODO: handle multiple default file names
@@ -30,7 +29,16 @@ func main() {
 	// New context.
 	ctx, cancel := context.WithCancel(context.Background())
 
-	defer cancel()
+	interruptChan := make(chan os.Signal, 1)
+
+	signal.Notify(interruptChan, syscall.SIGINT, syscall.SIGKILL, syscall.SIGTERM)
+
+	go func() {
+		<-interruptChan
+		cancel()
+		signal.Stop(interruptChan)
+		log.Fatal(got.ErrDownloadAborted)
+	}()
 
 	// CLI app.
 	app := &cli.App{
@@ -41,7 +49,12 @@ func main() {
 				Name:    "output",
 				Value:   "got.output",
 				Usage:   "Download save path.",
-				Aliases: []string{"out", "o", "save"},
+				Aliases: []string{"out", "o"},
+			},
+			&cli.StringFlag{
+				Name:    "dir",
+				Usage:   "Download save directory.",
+				Aliases: []string{"to", "D"},
 			},
 			&cli.StringFlag{
 				Name:    "batch",
@@ -68,13 +81,7 @@ func main() {
 			},
 		},
 		Action: func(c *cli.Context) error {
-
-			if err := run(ctx, c); err != nil {
-				return err
-			}
-
-			fmt.Println("Done!")
-			return nil
+			return run(ctx, c);
 		},
 	}
 
@@ -175,11 +182,15 @@ func download(ctx context.Context, c *cli.Context, g *got.Got, url string) (err 
 	}
 
 	// TODO: fix dublicated default filename
-	fname := got.GetFilename(url)
+	fname := c.String("output")
+
+	if fname == "" {
+		fname = got.GetFilename(url)
+	}
 
 	return g.Do(&got.Download{
 		URL:         url,
-		Dest:        filepath.Join(c.String("output"), fname),
+		Dest:        filepath.Join(c.String("dir"), fname),
 		ChunkSize:   c.Uint64("size"),
 		Concurrency: c.Uint("concurrency"),
 	})
