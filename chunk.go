@@ -1,56 +1,36 @@
 package got
 
 import (
-	"fmt"
-	"io"
-	"net/http"
-	"os"
+	"sync"
 )
 
-// Chunk is a part of file.
+// Chunk is a partial content range.
 type Chunk struct {
-
-	// Progress to report written bytes.
-	*Progress
 
 	// Chunk start pos.
 	Start uint64
 
-	// Chunk end.
+	// Chunk end pos.
 	End uint64
 
 	// Path name where this chunk downloaded.
 	Path string
 
+	// Done to check is this chunk downloaded.
 	Done chan struct{}
 }
 
-// Download a chunk, and report to Progress, it returns error if any!
-func (c *Chunk) Download(URL string, client *http.Client, dest *os.File) (err error) {
+// Reset resets the chunk item to the initial state.
+func (c *Chunk) Reset() {
+	c.Start = 0
+	c.End = 0
+	c.Path = ""
+	c.Done = make(chan struct{})
+}
 
-	req, err := NewRequest("GET", URL)
-
-	if err != nil {
-		return err
-	}
-
-	contentRange := fmt.Sprintf("bytes=%d-%d", c.Start, c.End)
-
-	if c.End == 0 {
-		contentRange = fmt.Sprintf("bytes=%d-", c.Start)
-	}
-
-	req.Header.Set("Range", contentRange)
-
-	res, err := client.Do(req)
-
-	if err != nil {
-		return err
-	}
-
-	defer res.Body.Close()
-
-	_, err = io.Copy(dest, io.TeeReader(res.Body, c.Progress))
-
-	return err
+// ChunkPool helps in multi *Download files.
+var ChunkPool = &sync.Pool{
+	New: func() interface{} {
+		return new(Chunk)
+	},
 }
