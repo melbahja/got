@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"time"
+	"errors"
 )
 
 // DefaulUserAgent is the default Got user agent to send http requests.

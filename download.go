@@ -193,8 +193,10 @@ func (d *Download) Start() error {
 	// Remove temp dir.
 	defer os.RemoveAll(temp)
 
-	// Run progress func.
-	// go d.Progress.Run(d.ctx, d)
+	done := make(chan struct{}, 1)
+	errs := make(chan error, 1)
+	defer close(done)
+	defer close(errs)
 
 	// Partial content not supported, just download the file in one chunk.
 	if len(d.chunks) == 0 {
@@ -210,21 +212,32 @@ func (d *Download) Start() error {
 		return d.DownloadChunk(d.ctx, Chunk{}, file)
 	}
 
-	// Error group.
-	eg, ctx := errgroup.WithContext(d.ctx)
+	go func() {
+		select {
+		case <-d.ctx.Done():
+			// System or user interrupted the program
+			errs <- ErrDownloadAborted
+			return
+		case <-done:
+			// Everything went ok, no interruptions
+			return
+		}
+	}()
 
 	// Download chunks.
-	eg.Go(func() error {
-		return d.dl(ctx, temp)
-	})
+	go func() {
+		if err := d.dl(d.ctx, temp); err != nil {
+			errs <- err
+		}
+	}()
 
 	// Merge chunks.
-	eg.Go(func() error {
-		return d.merge(ctx)
-	})
+	go func() {
+		errs <- d.merge(d.ctx)
+	}()
 
 	// Wait for chunks...
-	if err := eg.Wait(); err != nil {
+	if err := <-errs; err != nil {
 
 		// Remove dest file on error.
 		os.Remove(d.Dest)
@@ -232,6 +245,7 @@ func (d *Download) Start() error {
 		return err
 	}
 
+	done <- struct{}{}
 	return nil
 }
 
