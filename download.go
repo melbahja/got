@@ -118,12 +118,12 @@ func (d *Download) Init() (err error) {
 			d.ChunkSize = d.ChunkSize / 2
 		}
 
-		// Set default min chunk size to 1m, or file size / 2
+		// Set default min chunk size to 2m, or file size / 2
 		if d.MinChunkSize == 0 {
 
-			d.MinChunkSize = 1000000
+			d.MinChunkSize = 2000000
 
-			if d.MinChunkSize > d.totalSize {
+			if d.MinChunkSize >= d.totalSize {
 				d.MinChunkSize = d.totalSize / 2
 			}
 		}
@@ -138,7 +138,7 @@ func (d *Download) Init() (err error) {
 			d.ChunkSize = d.MaxChunkSize
 		}
 
-	} else if d.ChunkSize > d.totalSize {
+	} else if d.ChunkSize >= d.totalSize {
 
 		d.ChunkSize = d.totalSize / 2
 	}
@@ -247,7 +247,6 @@ func (d *Download) Start() error {
 		return err
 	}
 
-	done <- struct{}{}
 	return nil
 }
 
