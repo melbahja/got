@@ -72,12 +72,7 @@ func (d Download) GetInfo() (size uint64, rangeable bool, err error) {
 
 // Init set defaults and split file into chunks and gets Info,
 // you should call Init before Start
-func (d *Download) Init() error {
-
-	var (
-		err                                error
-		i, startRange, endRange, chunksLen uint64
-	)
+func (d *Download) Init() (err error) {
 
 	// Set start time.
 	d.startedAt = time.Now()
@@ -104,7 +99,13 @@ func (d *Download) Init() error {
 
 	// Set concurrency default to Num CPU * 2.
 	if d.Concurrency == 0 {
+
 		d.Concurrency = uint(runtime.NumCPU() * 2)
+
+		// Set default max concurrency to 8
+		if d.Concurrency > 8 {
+			d.Concurrency = 8
+		}
 	}
 
 	// Set default chunk size
@@ -141,6 +142,8 @@ func (d *Download) Init() error {
 
 		d.ChunkSize = d.totalSize / 2
 	}
+
+	var i, startRange, endRange, chunksLen uint64
 
 	chunksLen = d.totalSize / d.ChunkSize
 
@@ -189,13 +192,17 @@ func (d *Download) Start() error {
 		return err
 	}
 
-	// Remove temp dir.
-	defer os.RemoveAll(temp)
-
 	done := make(chan struct{}, 1)
 	errs := make(chan error, 1)
-	defer close(done)
-	defer close(errs)
+
+	defer func() {
+
+		// Close channels.
+		close(done)
+		close(errs)
+		// Remove temp dir.
+		os.RemoveAll(temp)
+	}()
 
 	// Partial content not supported, just download the file in one chunk.
 	if len(d.chunks) == 0 {
@@ -341,7 +348,7 @@ func (d *Download) dl(ctx context.Context, temp string, errc chan error) {
 		max <- 1
 		wg.Add(1)
 
-		go func(i int){
+		go func(i int) {
 
 			defer wg.Done()
 
@@ -368,7 +375,7 @@ func (d *Download) dl(ctx context.Context, temp string, errc chan error) {
 			// Mark this chunk as downloaded.
 			close(d.chunks[i].Done)
 
-			<- max
+			<-max
 		}(i)
 	}
 
