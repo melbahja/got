@@ -9,6 +9,9 @@ import (
 // DefaulUserAgent is the default Got user agent to send http requests.
 const DefaulUserAgent = "Got/1.0"
 
+// ErrDownloadAborted - When download is aborted by the OS before it is completed, ErrDownloadAborted will be triggered
+var ErrDownloadAborted = errors.New("Operation aborted")
+
 // NewRequest returns a new http.Request and error if any.
 func NewRequest(ctx context.Context, method, URL string) (req *http.Request, err error) {
 
