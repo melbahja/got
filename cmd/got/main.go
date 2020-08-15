@@ -3,16 +3,15 @@ package main
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"log"
 	"net/url"
 	"os"
-	"path/filepath"
-	"runtime"
-	"time"
 	"os/signal"
+	"path/filepath"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/apoorvam/goterminal"
 	"github.com/dustin/go-humanize"
@@ -22,8 +21,6 @@ import (
 
 var version string
 
-// TODO: handle signals
-// TODO: handle multiple default file names
 func main() {
 
 	// New context.
@@ -47,28 +44,26 @@ func main() {
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "output",
-				Value:   "got.output",
-				Usage:   "Download save path.",
+				Usage:   "Download save `path`.",
 				Aliases: []string{"out", "o"},
 			},
 			&cli.StringFlag{
 				Name:    "dir",
-				Usage:   "Download save directory.",
-				Aliases: []string{"to", "D"},
+				Usage:   "Save downloaded file to `directory`.",
+				Aliases: []string{"d"},
 			},
 			&cli.StringFlag{
-				Name:    "batch",
-				Usage:   "Batch download file from list in file.",
+				Name:    "file",
+				Usage:   "Batch download file from list in `file`.",
 				Aliases: []string{"bf", "f"},
 			},
 			&cli.Uint64Flag{
 				Name:    "size",
-				Usage:   "File chunks size.",
+				Usage:   "File chunks size in `bytes`.",
 				Aliases: []string{"chunk"},
 			},
 			&cli.UintFlag{
 				Name:    "concurrency",
-				Value:   uint(runtime.NumCPU() * 2),
 				Usage:   "Number of chunks to download at the same time.",
 				Aliases: []string{"c"},
 			},
@@ -81,7 +76,7 @@ func main() {
 			},
 		},
 		Action: func(c *cli.Context) error {
-			return run(ctx, c);
+			return run(ctx, c)
 		},
 	}
 
@@ -126,6 +121,14 @@ func run(ctx context.Context, c *cli.Context) error {
 		return err
 	}
 
+	// Create dir if not exists.
+	if c.String("dir") != "" {
+
+		if _, err := os.Stat(c.String("dir")); os.IsNotExist(err) {
+			os.MkdirAll(c.String("dir"), os.ModePerm)
+		}
+	}
+
 	// Piped stdin
 	if info.Mode()&os.ModeNamedPipe > 0 {
 
@@ -135,9 +138,9 @@ func run(ctx context.Context, c *cli.Context) error {
 	}
 
 	// Batch file.
-	if c.String("batch") != "" {
+	if c.String("file") != "" {
 
-		file, err := os.Open(c.String("batch"))
+		file, err := os.Open(c.String("file"))
 
 		if err != nil {
 			return err
@@ -165,7 +168,13 @@ func multiDownload(ctx context.Context, c *cli.Context, g *got.Got, writer *gote
 
 	for scanner.Scan() {
 
-		if err := download(ctx, c, g, scanner.Text()); err != nil {
+		url := strings.TrimSpace(scanner.Text())
+
+		if url == "" {
+			continue
+		}
+
+		if err := download(ctx, c, g, url); err != nil {
 			return err
 		}
 
@@ -181,7 +190,6 @@ func download(ctx context.Context, c *cli.Context, g *got.Got, url string) (err 
 		return err
 	}
 
-	// TODO: fix dublicated default filename
 	fname := c.String("output")
 
 	if fname == "" {
@@ -191,6 +199,7 @@ func download(ctx context.Context, c *cli.Context, g *got.Got, url string) (err 
 	return g.Do(&got.Download{
 		URL:         url,
 		Dest:        filepath.Join(c.String("dir"), fname),
+		Interval:    100,
 		ChunkSize:   c.Uint64("size"),
 		Concurrency: c.Uint("concurrency"),
 	})
