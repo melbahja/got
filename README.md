@@ -60,6 +60,10 @@ sudo mv /tmp/bin/got /usr/bin/got
 go get github.com/melbahja/got/cmd/got
 ```
 
+#### Or from the AUR
+Install `got` for the latest release version or `got-git` for the latest development version. 
+
+> **Note:** these packages are not maintained by melbahja
 
 ## Command Line Tool Usage
 
