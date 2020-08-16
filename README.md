@@ -78,14 +78,14 @@ got -o /path/to/save https://example.com/file.mp4
 got --dir /path/to/dir -f urls.txt
 ```
 
-### You can pass multiple URLs from stdin:
+### You can pipe multiple URLs:
 ```bash
 cat urls.txt | got --dir /path/to/dir
 ```
 
-#### To see all available flags type:
+#### Docs for available flags:
 ```bash
-got --help
+got help
 ```
 
 
