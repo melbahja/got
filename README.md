@@ -1,59 +1,42 @@
 <div align="center">
 	<h1>Got.</h1>
-    <h4 align="center">
-	   Simple and fast concurrent downloader.
+	<h4 align="center">
+		Simple and fast concurrent downloader.
 	</h4>
 </div>
 
 <p align="center">
-    <a href="#installation">Installation</a> ❘
-    <a href="#command-line-tool-usage">CLI Usage</a> ❘
-    <a href="#module-usage">Module Usage</a> ❘
-    <a href="#license">License</a>
+	<a href="#installation">Installation</a> ❘
+	<a href="#command-line-tool-usage">CLI Usage</a> ❘
+	<a href="#module-usage">Module Usage</a> ❘
+	<a href="#license">License</a>
 </p>
 
 ## Comparison
 
-Comparison in my machine:
-
-```bash
-// cURL
-$ time curl http://speedtest.ftp.otenet.gr/files/test10Mb.db --output test
-
-real	0m38.225s
-user	0m0.044s
-sys	0m0.199s
-
-
-// Got
-$ time got --out test http://speedtest.ftp.otenet.gr/files/test10Mb.db
-
-real	0m7.136s
-user	0m0.793s
-sys	0m0.507s
-```
----
 Comparison in cloud server:
 
 ```bash
-// Got
-$ time got --out /tmp/test http://www.ovh.net/files/1Gio.dat
- Total Size: 1.1 GB | Chunk Size: 54 MB | Concurrency: 10 | Progress: 1.1 GB | Done!
 
-real	0m10.273s
-user	0m0.205s
-sys	0m3.296s
+[root@centos-nyc-12 ~]# time got -o /tmp/test -c 20 http://www.ovh.net/files/1Gio.dat
+URL: http://www.ovh.net/files/1Gio.dat done!
 
-// cURL
-$ time curl http://www.ovh.net/files/1Gio.dat --output /tmp/test1
+real    0m8.832s
+user    0m0.203s
+sys 0m3.176s
+
+
+[root@centos-nyc-12 ~]# time curl http://www.ovh.net/files/1Gio.dat --output /tmp/test1
   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-                                 Dload  Upload   Total   Spent    Left  Speed
-100 1024M  100 1024M    0     0  30.8M      0  0:00:33  0:00:33 --:--:-- 36.4M
+								 Dload  Upload   Total   Spent    Left  Speed
+100 1024M  100 1024M    0     0  35.6M      0  0:00:28  0:00:28 --:--:-- 34.4M
 
-real	0m33.318s
-user	0m0.420s
-sys	0m2.056s
+real    0m28.781s
+user    0m0.379s
+sys 0m1.970s
+
 ```
+
 
 ## Installation
 
@@ -85,14 +68,29 @@ go get github.com/melbahja/got/cmd/got
 got https://example.com/file.mp4
 ```
 
-#### Or you can specify destination path:
+#### You can specify destination path:
 ```bash
-got --out /path/to/save https://example.com/file.mp4
+got -o /path/to/save https://example.com/file.mp4
 ```
 
-#### To see all available flags type:
+#### You can download multiple URLs and save them to directory:
 ```bash
-got --help
+got --dir /path/to/dir https://example.com/file.mp4 https://example.com/file2.mp4
+```
+
+#### You can download multiple URLs from a file:
+```bash
+got --dir /path/to/dir -f urls.txt
+```
+
+### You can pipe multiple URLs:
+```bash
+cat urls.txt | got --dir /path/to/dir
+```
+
+#### Docs for available flags:
+```bash
+got help
 ```
 
 
@@ -107,19 +105,22 @@ import "github.com/melbahja/got"
 
 func main() {
 
-    dl, err := got.New("https://example.com/file.mp4", "/path/to/save")
+	g := got.New()
 
-    if err != nil {
-    	// handle the error!
-    }
+	err := g.Download("http://localhost/file.ext", "/path/to/save")
 
-    // Start the download
-    err = dl.Start()
+	if err != nil {
+		// ..
+	}
 }
 
 ```
 
 For more see [GoDocs](https://pkg.go.dev/github.com/melbahja/got).
+
+## How It Works?
+
+Got takes advantage of the HTTP range requests support in servers [RFC 7233](https://tools.ietf.org/html/rfc7233), if the requested URL server supports partial content Got split the file into chunks, then starts downloading and merging them into the destinaton file concurrently.
 
 
 ## License

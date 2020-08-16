@@ -5,6 +5,9 @@ import (
 	"path/filepath"
 )
 
+// DefaultFileName is the fallback name for GetFilename.
+var DefaultFileName = "got.output"
+
 // GetFilename it returns default file name from a URL.
 func GetFilename(URL string) string {
 
@@ -13,5 +16,5 @@ func GetFilename(URL string) string {
 		return filepath.Base(u.Path)
 	}
 
-	return "got.output"
+	return DefaultFileName
 }
