@@ -73,6 +73,11 @@ got https://example.com/file.mp4
 got -o /path/to/save https://example.com/file.mp4
 ```
 
+#### You can download multiple URLs and save them to directory:
+```bash
+got --dir /path/to/dir https://example.com/file.mp4 https://example.com/file2.mp4
+```
+
 #### You can download multiple URLs from a file:
 ```bash
 got --dir /path/to/dir -f urls.txt
