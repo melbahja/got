@@ -107,7 +107,7 @@ func (d *Download) Init() (err error) {
 			d.Concurrency = 20
 		}
 
-		// Set default min concurrency to 2.
+		// Set default min concurrency to 4.
 		if d.Concurrency <= 2 {
 			d.Concurrency = 4
 		}
@@ -256,7 +256,7 @@ func (d *Download) Start() error {
 	return nil
 }
 
-// RunProgress runs ProgressFunc based on Interval and updates lastSize
+// RunProgress runs ProgressFunc based on Interval and updates lastSize.
 func (d *Download) RunProgress(fn ProgressFunc) {
 
 	// Set default interval.
@@ -417,11 +417,11 @@ func (d *Download) merge(ctx context.Context) error {
 		// Non-blocking chunk close.
 		go chunk.Close()
 
-		// Sync dest file.
-		file.Sync()
-
 		// Put chunk in chunk pool
 		ChunkPool.Put(&d.chunks[i])
+
+		// Sync dest file.
+		file.Sync()
 	}
 
 	return nil
