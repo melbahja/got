@@ -259,11 +259,13 @@ func downloadPartialContentNotSupportedTest(t *testing.T) {
 
 func ExampleDownload() {
 
-	defer os.Remove("/tmp/got_dl_file_test")
+	// Just for testing
+	destPath := createTemp()
+	defer clean(destPath)
 
 	ctx := context.Background()
 
-	dl := got.NewDownload(ctx, testUrl, "/tmp/got_dl_file_test")
+	dl := got.NewDownload(ctx, testUrl, destPath)
 
 	// Init
 	if err := dl.Init(); err != nil {

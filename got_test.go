@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"time"
 
@@ -59,11 +58,13 @@ var testUrl = httpt.URL + "/ok_file"
 
 func ExampleGot() {
 
-	defer os.Remove("/tmp/got_dl_file_test")
+	// Just for testing
+	destPath := createTemp()
+	defer clean(destPath)
 
 	g := got.New()
 
-	err := g.Download(testUrl, "/tmp/got_dl_file_test")
+	err := g.Download(testUrl, destPath)
 
 	if err != nil {
 		log.Fatal(err)
@@ -77,13 +78,15 @@ func ExampleGot() {
 
 func ExampleGot_withContext() {
 
-	defer os.Remove("/tmp/got_dl_file_test")
+	// Just for testing
+	destPath := createTemp()
+	defer clean(destPath)
 
 	ctx := context.Background()
 
 	g := got.NewWithContext(ctx)
 
-	err := g.Download(testUrl, "/tmp/got_dl_file_test")
+	err := g.Download(testUrl, destPath)
 
 	if err != nil {
 		log.Fatal(err)
