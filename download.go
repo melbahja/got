@@ -97,14 +97,19 @@ func (d *Download) Init() (err error) {
 		return nil
 	}
 
-	// Set concurrency default to Num CPU * 2.
+	// Set concurrency default.
 	if d.Concurrency == 0 {
 
-		d.Concurrency = uint(runtime.NumCPU() * 2)
+		d.Concurrency = uint(runtime.NumCPU() * 3)
 
-		// Set default max concurrency to 8
-		if d.Concurrency > 8 {
-			d.Concurrency = 8
+		// Set default max concurrency to 20.
+		if d.Concurrency > 20 {
+			d.Concurrency = 20
+		}
+
+		// Set default min concurrency to 2.
+		if d.Concurrency <= 2 {
+			d.Concurrency = 4
 		}
 	}
 
@@ -164,9 +169,10 @@ func (d *Download) Init() (err error) {
 		}
 
 		chunk := ChunkPool.Get().(*Chunk)
-		chunk.Reset()
+		chunk.Path = ""
 		chunk.Start = startRange
 		chunk.End = endRange
+		chunk.Done = make(chan struct{})
 
 		d.chunks = append(d.chunks, *chunk)
 

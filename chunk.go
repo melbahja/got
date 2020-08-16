@@ -20,14 +20,6 @@ type Chunk struct {
 	Done chan struct{}
 }
 
-// Reset resets the chunk item to the initial state.
-func (c *Chunk) Reset() {
-	c.Start = 0
-	c.End = 0
-	c.Path = ""
-	c.Done = make(chan struct{})
-}
-
 // ChunkPool helps in multi *Download files.
 var ChunkPool = &sync.Pool{
 	New: func() interface{} {
