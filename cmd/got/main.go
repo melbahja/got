@@ -101,15 +101,15 @@ func run(ctx context.Context, c *cli.Context) error {
 
 		fmt.Fprintf(
 			writer,
-			"Downloading: %s \nProgress: (%s/%s) | Time: %s | Avg: %s/s | Speed: %s/s | Chunk: %s | Concurrency: %d\n",
+			"Concurrency: %d | Chunk: %s | URL: %s \nProgress: (%s/%s) | Time: %s | Avg: %s/s | Speed: %s/s\n",
+			d.Concurrency,
+			humanize.Bytes(d.ChunkSize),
 			d.URL,
 			humanize.Bytes(d.Size()),
 			humanize.Bytes(d.TotalSize()),
 			d.TotalCost().Round(time.Second),
 			humanize.Bytes(d.AvgSpeed()),
 			humanize.Bytes(d.Speed()),
-			humanize.Bytes(d.ChunkSize),
-			d.Concurrency,
 		)
 
 		writer.Print()
@@ -158,7 +158,9 @@ func run(ctx context.Context, c *cli.Context) error {
 			return err
 		}
 
+		writer.Clear()
 		writer.Reset()
+		fmt.Println(fmt.Sprintf("URL: %s done!", url))
 	}
 
 	return nil
@@ -178,7 +180,9 @@ func multiDownload(ctx context.Context, c *cli.Context, g *got.Got, writer *gote
 			return err
 		}
 
+		writer.Clear()
 		writer.Reset()
+		fmt.Println(fmt.Sprintf("URL: %s done!", url))
 	}
 
 	return nil
