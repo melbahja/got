@@ -57,7 +57,7 @@ func NewHttptestServer() *httptest.Server {
 
 var testUrl = httpt.URL + "/ok_file"
 
-func ExampleGotDownload() {
+func ExampleGot() {
 
 	defer os.Remove("/tmp/got_dl_file_test")
 
@@ -75,7 +75,7 @@ func ExampleGotDownload() {
 	// Output: done
 }
 
-func ExampleGotDownload_withContext() {
+func ExampleGot_withContext() {
 
 	defer os.Remove("/tmp/got_dl_file_test")
 
