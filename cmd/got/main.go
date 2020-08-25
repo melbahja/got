@@ -11,9 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
-	"github.com/apoorvam/goterminal"
 	"github.com/dustin/go-humanize"
 	"github.com/melbahja/got"
 	"github.com/urfave/cli/v2"
@@ -69,11 +67,6 @@ func main() {
 				Usage:   "Number of chunks to download at the same time.",
 				Aliases: []string{"c"},
 			},
-			&cli.BoolFlag{
-				Name:    "simple",
-				Usage:   "shows a simpler progress report",
-				Aliases: []string{"s"},
-			},
 		},
 		Version: version,
 		Authors: []*cli.Author{
@@ -94,10 +87,6 @@ func main() {
 
 func run(ctx context.Context, c *cli.Context) error {
 
-	// Goterm writer.
-	writer := goterminal.New(os.Stdout)
-	defer writer.Reset()
-
 	// New *Got.
 	g := got.NewWithContext(ctx)
 	var p progress.Progress
@@ -107,37 +96,20 @@ func run(ctx context.Context, c *cli.Context) error {
 	// Progress.
 	g.ProgressFunc = func(d *got.Download) {
 
-		writer.Clear()
-		if c.Bool("simple") {
-			perc, err := progress.GetPercentage(float64(d.Size()), float64(d.TotalSize()))
-			if err != nil {
-				perc = 100
-			}
-			fmt.Printf(
-				" %6.2f%% %s%s%s %s/%s @ %s/s"+ansi.ClearRight()+"\r",
-				perc,
-				r,
-				color(p.GetBar(perc, 100)),
-				l,
-				humanize.Bytes(d.Size()),
-				humanize.Bytes(d.TotalSize()),
-				humanize.Bytes(d.Speed()),
-			)
-		} else {
-			fmt.Fprintf(
-				writer,
-				"Concurrency: %d | Chunk: %s | URL: %s \nProgress: (%s/%s) | Time: %s | Avg: %s/s | Speed: %s/s\n",
-				d.Concurrency,
-				humanize.Bytes(d.ChunkSize),
-				d.URL,
-				humanize.Bytes(d.Size()),
-				humanize.Bytes(d.TotalSize()),
-				d.TotalCost().Round(time.Second),
-				humanize.Bytes(d.AvgSpeed()),
-				humanize.Bytes(d.Speed()),
-			)
+		perc, err := progress.GetPercentage(float64(d.Size()), float64(d.TotalSize()))
+		if err != nil {
+			perc = 100
 		}
-		writer.Print()
+		fmt.Printf(
+			" %6.2f%% %s%s%s %s/%s @ %s/s"+ansi.ClearRight()+"\r",
+			perc,
+			r,
+			color(p.GetBar(perc, 100)),
+			l,
+			humanize.Bytes(d.Size()),
+			humanize.Bytes(d.TotalSize()),
+			humanize.Bytes(d.Speed()),
+		)
 	}
 
 	info, err := os.Stdin.Stat()
@@ -157,7 +129,7 @@ func run(ctx context.Context, c *cli.Context) error {
 	// Piped stdin
 	if info.Mode()&os.ModeNamedPipe > 0 {
 
-		if err := multiDownload(ctx, c, g, writer, bufio.NewScanner(os.Stdin)); err != nil {
+		if err := multiDownload(ctx, c, g, bufio.NewScanner(os.Stdin)); err != nil {
 			return err
 		}
 	}
@@ -171,7 +143,7 @@ func run(ctx context.Context, c *cli.Context) error {
 			return err
 		}
 
-		if err := multiDownload(ctx, c, g, writer, bufio.NewScanner(file)); err != nil {
+		if err := multiDownload(ctx, c, g, bufio.NewScanner(file)); err != nil {
 			return err
 		}
 	}
@@ -183,18 +155,14 @@ func run(ctx context.Context, c *cli.Context) error {
 			return err
 		}
 
-		writer.Clear()
-		writer.Reset()
-		if c.Bool("simple") {
-			fmt.Print(ansi.ClearLine())
-		}
+		fmt.Print(ansi.ClearLine())
 		fmt.Println(fmt.Sprintf("URL: %s done!", url))
 	}
 
 	return nil
 }
 
-func multiDownload(ctx context.Context, c *cli.Context, g *got.Got, writer *goterminal.Writer, scanner *bufio.Scanner) error {
+func multiDownload(ctx context.Context, c *cli.Context, g *got.Got, scanner *bufio.Scanner) error {
 
 	for scanner.Scan() {
 
@@ -208,8 +176,7 @@ func multiDownload(ctx context.Context, c *cli.Context, g *got.Got, writer *gote
 			return err
 		}
 
-		writer.Clear()
-		writer.Reset()
+		fmt.Print(ansi.ClearLine())
 		fmt.Println(fmt.Sprintf("URL: %s done!", url))
 	}
 
