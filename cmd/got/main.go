@@ -17,6 +17,8 @@ import (
 	"github.com/dustin/go-humanize"
 	"github.com/melbahja/got"
 	"github.com/urfave/cli/v2"
+	"gitlab.com/poldi1405/go-ansi"
+	"gitlab.com/poldi1405/go-indicators/progress"
 )
 
 var version string
@@ -67,6 +69,11 @@ func main() {
 				Usage:   "Number of chunks to download at the same time.",
 				Aliases: []string{"c"},
 			},
+			&cli.BoolFlag{
+				Name:    "simple",
+				Usage:   "shows a simpler progress report",
+				Aliases: []string{"s"},
+			},
 		},
 		Version: version,
 		Authors: []*cli.Author{
@@ -93,25 +100,43 @@ func run(ctx context.Context, c *cli.Context) error {
 
 	// New *Got.
 	g := got.NewWithContext(ctx)
+	var p progress.Progress
+	p.SetStyle(simpleProgressStyle)
+	p.Width = 30
 
 	// Progress.
 	g.ProgressFunc = func(d *got.Download) {
 
 		writer.Clear()
-
-		fmt.Fprintf(
-			writer,
-			"Concurrency: %d | Chunk: %s | URL: %s \nProgress: (%s/%s) | Time: %s | Avg: %s/s | Speed: %s/s\n",
-			d.Concurrency,
-			humanize.Bytes(d.ChunkSize),
-			d.URL,
-			humanize.Bytes(d.Size()),
-			humanize.Bytes(d.TotalSize()),
-			d.TotalCost().Round(time.Second),
-			humanize.Bytes(d.AvgSpeed()),
-			humanize.Bytes(d.Speed()),
-		)
-
+		if c.Bool("simple") {
+			perc, err := progress.GetPercentage(float64(d.Size()), float64(d.TotalSize()))
+			if err != nil {
+				perc = 100
+			}
+			fmt.Printf(
+				" %6.2f%% %s%s%s %s/%s @ %s/s"+ansi.ClearRight()+"\r",
+				perc,
+				r,
+				color(p.GetBar(perc, 100)),
+				l,
+				humanize.Bytes(d.Size()),
+				humanize.Bytes(d.TotalSize()),
+				humanize.Bytes(d.Speed()),
+			)
+		} else {
+			fmt.Fprintf(
+				writer,
+				"Concurrency: %d | Chunk: %s | URL: %s \nProgress: (%s/%s) | Time: %s | Avg: %s/s | Speed: %s/s\n",
+				d.Concurrency,
+				humanize.Bytes(d.ChunkSize),
+				d.URL,
+				humanize.Bytes(d.Size()),
+				humanize.Bytes(d.TotalSize()),
+				d.TotalCost().Round(time.Second),
+				humanize.Bytes(d.AvgSpeed()),
+				humanize.Bytes(d.Speed()),
+			)
+		}
 		writer.Print()
 	}
 
@@ -160,6 +185,9 @@ func run(ctx context.Context, c *cli.Context) error {
 
 		writer.Clear()
 		writer.Reset()
+		if c.Bool("simple") {
+			fmt.Print(ansi.ClearLine())
+		}
 		fmt.Println(fmt.Sprintf("URL: %s done!", url))
 	}
 
