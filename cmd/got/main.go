@@ -101,7 +101,7 @@ func run(ctx context.Context, c *cli.Context) error {
 			perc = 100
 		}
 		fmt.Printf(
-			" %6.2f%% %s%s%s %s/%s @ %s/s"+ansi.ClearRight()+"\r",
+			" %6.2f%% %s%s%s %s/%s @ %s/s%s\r",
 			perc,
 			r,
 			color(p.GetBar(perc, 100)),
@@ -109,6 +109,7 @@ func run(ctx context.Context, c *cli.Context) error {
 			humanize.Bytes(d.Size()),
 			humanize.Bytes(d.TotalSize()),
 			humanize.Bytes(d.Speed()),
+			ansi.ClearRight(),
 		)
 	}
 
