@@ -11,12 +11,12 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
-	"github.com/apoorvam/goterminal"
 	"github.com/dustin/go-humanize"
 	"github.com/melbahja/got"
 	"github.com/urfave/cli/v2"
+	"gitlab.com/poldi1405/go-ansi"
+	"gitlab.com/poldi1405/go-indicators/progress"
 )
 
 var version string
@@ -87,32 +87,30 @@ func main() {
 
 func run(ctx context.Context, c *cli.Context) error {
 
-	// Goterm writer.
-	writer := goterminal.New(os.Stdout)
-	defer writer.Reset()
-
 	// New *Got.
 	g := got.NewWithContext(ctx)
+	var p progress.Progress
+	p.SetStyle(simpleProgressStyle)
+	p.Width = 30
 
 	// Progress.
 	g.ProgressFunc = func(d *got.Download) {
 
-		writer.Clear()
-
-		fmt.Fprintf(
-			writer,
-			"Concurrency: %d | Chunk: %s | URL: %s \nProgress: (%s/%s) | Time: %s | Avg: %s/s | Speed: %s/s\n",
-			d.Concurrency,
-			humanize.Bytes(d.ChunkSize),
-			d.URL,
+		perc, err := progress.GetPercentage(float64(d.Size()), float64(d.TotalSize()))
+		if err != nil {
+			perc = 100
+		}
+		fmt.Printf(
+			" %6.2f%% %s%s%s %s/%s @ %s/s%s\r",
+			perc,
+			r,
+			color(p.GetBar(perc, 100)),
+			l,
 			humanize.Bytes(d.Size()),
 			humanize.Bytes(d.TotalSize()),
-			d.TotalCost().Round(time.Second),
-			humanize.Bytes(d.AvgSpeed()),
 			humanize.Bytes(d.Speed()),
+			ansi.ClearRight(),
 		)
-
-		writer.Print()
 	}
 
 	info, err := os.Stdin.Stat()
@@ -132,7 +130,7 @@ func run(ctx context.Context, c *cli.Context) error {
 	// Piped stdin
 	if info.Mode()&os.ModeNamedPipe > 0 {
 
-		if err := multiDownload(ctx, c, g, writer, bufio.NewScanner(os.Stdin)); err != nil {
+		if err := multiDownload(ctx, c, g, bufio.NewScanner(os.Stdin)); err != nil {
 			return err
 		}
 	}
@@ -146,7 +144,7 @@ func run(ctx context.Context, c *cli.Context) error {
 			return err
 		}
 
-		if err := multiDownload(ctx, c, g, writer, bufio.NewScanner(file)); err != nil {
+		if err := multiDownload(ctx, c, g, bufio.NewScanner(file)); err != nil {
 			return err
 		}
 	}
@@ -158,15 +156,14 @@ func run(ctx context.Context, c *cli.Context) error {
 			return err
 		}
 
-		writer.Clear()
-		writer.Reset()
+		fmt.Print(ansi.ClearLine())
 		fmt.Println(fmt.Sprintf("URL: %s done!", url))
 	}
 
 	return nil
 }
 
-func multiDownload(ctx context.Context, c *cli.Context, g *got.Got, writer *goterminal.Writer, scanner *bufio.Scanner) error {
+func multiDownload(ctx context.Context, c *cli.Context, g *got.Got, scanner *bufio.Scanner) error {
 
 	for scanner.Scan() {
 
@@ -180,8 +177,7 @@ func multiDownload(ctx context.Context, c *cli.Context, g *got.Got, writer *gote
 			return err
 		}
 
-		writer.Clear()
-		writer.Reset()
+		fmt.Print(ansi.ClearLine())
 		fmt.Println(fmt.Sprintf("URL: %s done!", url))
 	}
 
