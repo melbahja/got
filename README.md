@@ -12,6 +12,8 @@
 	<a href="#license">License</a>
 </p>
 
+![Tests](https://github.com/melbahja/got/workflows/Test/badge.svg)
+
 ## Comparison
 
 Comparison in cloud server:
@@ -61,7 +63,7 @@ go get github.com/melbahja/got/cmd/got
 ```
 
 #### Or from the AUR
-Install `got` for the latest release version or `got-git` for the latest development version. 
+Install [`got`](https://aur.archlinux.org/packages/got/) for the latest release version or `got-git` for the latest development version. 
 
 > **Note:** these packages are not maintained by melbahja
 
@@ -120,11 +122,11 @@ func main() {
 
 ```
 
-For more see [GoDocs](https://pkg.go.dev/github.com/melbahja/got).
+For more see [PkgDocs](https://pkg.go.dev/github.com/melbahja/got).
 
 ## How It Works?
 
-Got takes advantage of the HTTP range requests support in servers [RFC 7233](https://tools.ietf.org/html/rfc7233), if the requested URL server supports partial content Got split the file into chunks, then starts downloading and merging them into the destinaton file concurrently.
+Got takes advantage of the HTTP range requests support in servers [RFC 7233](https://tools.ietf.org/html/rfc7233), if the server supports partial content Got split the file into chunks, then starts downloading and merging the chunks into the destinaton file concurrently.
 
 
 ## License
