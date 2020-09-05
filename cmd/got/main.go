@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -208,15 +207,10 @@ func download(ctx context.Context, c *cli.Context, g *got.Got, url string) (err 
 		return err
 	}
 
-	fname := c.String("output")
-
-	if fname == "" {
-		fname = got.GetFilename(url)
-	}
-
 	return g.Do(&got.Download{
 		URL:         url,
-		Dest:        filepath.Join(c.String("dir"), fname),
+		Dir:         c.String("dir"),
+		Name:        c.String("output"),
 		Interval:    100,
 		ChunkSize:   c.Uint64("size"),
 		Concurrency: c.Uint("concurrency"),
