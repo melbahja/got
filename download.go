@@ -15,6 +15,14 @@ import (
 )
 
 type (
+
+	// Info holds downloadable file info.
+	Info struct {
+		Size      uint64
+		Name      string
+		Rangeable bool
+	}
+
 	// ProgressFunc to show progress state, called by RunProgress based on interval.
 	ProgressFunc func(d *Download)
 
@@ -24,7 +32,7 @@ type (
 
 		Concurrency uint
 
-		URL, Dest string
+		URL, Dir, Name, Dest string
 
 		Interval, ChunkSize, MinChunkSize, MaxChunkSize uint64
 
@@ -32,42 +40,46 @@ type (
 
 		ctx context.Context
 
-		size, totalSize, lastSize uint64
+		size, lastSize uint64
+
+		info *Info
 
 		chunks []Chunk
-
-		rangeable bool
 
 		startedAt time.Time
 	}
 )
 
-// GetInfo returns URL file size and rangeable state, and error if any.
-func (d Download) GetInfo() (size uint64, rangeable bool, err error) {
+// GetInfo returns URL info, and error if any.
+func (d Download) GetInfo() (*Info, error) {
 
 	req, err := NewRequest(d.ctx, "HEAD", d.URL)
 
 	if err != nil {
-		return 0, false, err
+		return nil, err
 	}
 
 	res, err := d.Client.Do(req)
 
 	if err != nil {
-		return 0, false, err
+		return nil, err
 	}
 
 	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusBadRequest {
 
 		// On 4xx HEAD request (work around for #3).
 		if res.StatusCode != 404 && res.StatusCode >= 400 && res.StatusCode < 500 {
-			return 0, false, nil
+			return &Info{}, nil
 		}
 
-		return 0, false, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
+		return nil, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
 	}
 
-	return uint64(res.ContentLength), res.Header.Get("accept-ranges") == "bytes", nil
+	return &Info{
+		Size: uint64(res.ContentLength),
+		Name: getNameFromHeader(res.Header.Get("content-disposition")),
+		Rangeable: res.Header.Get("accept-ranges") == "bytes",
+	}, nil
 }
 
 // Init set defaults and split file into chunks and gets Info,
@@ -88,12 +100,25 @@ func (d *Download) Init() (err error) {
 	}
 
 	// Get and set URL size and partial content support state.
-	if d.totalSize, d.rangeable, err = d.GetInfo(); err != nil {
+	if d.info, err = d.GetInfo(); err != nil {
 		return err
 	}
 
+	// Set default dest path.
+	if d.Dest == "" {
+
+		fname := d.info.Name
+
+		// if info name invalid get name from url.
+		if fname == "" {
+			fname = GetFilename(d.URL)
+		}
+
+		d.Dest = filepath.Join(d.Dir, fname)
+	}
+
 	// Partial content not supported 😢!
-	if d.rangeable == false || d.totalSize == 0 {
+	if d.info.Rangeable == false || d.info.Size == 0 {
 		return nil
 	}
 
@@ -116,7 +141,7 @@ func (d *Download) Init() (err error) {
 	// Set default chunk size
 	if d.ChunkSize == 0 {
 
-		d.ChunkSize = d.totalSize / uint64(d.Concurrency)
+		d.ChunkSize = d.info.Size / uint64(d.Concurrency)
 
 		// if chunk size >= 102400000 bytes set default to (ChunkSize / 2)
 		if d.ChunkSize >= 102400000 {
@@ -128,8 +153,8 @@ func (d *Download) Init() (err error) {
 
 			d.MinChunkSize = 2000000
 
-			if d.MinChunkSize >= d.totalSize {
-				d.MinChunkSize = d.totalSize / 2
+			if d.MinChunkSize >= d.info.Size {
+				d.MinChunkSize = d.info.Size / 2
 			}
 		}
 
@@ -143,14 +168,14 @@ func (d *Download) Init() (err error) {
 			d.ChunkSize = d.MaxChunkSize
 		}
 
-	} else if d.ChunkSize >= d.totalSize {
+	} else if d.ChunkSize >= d.info.Size {
 
-		d.ChunkSize = d.totalSize / 2
+		d.ChunkSize = d.info.Size / 2
 	}
 
 	var i, startRange, endRange, chunksLen uint64
 
-	chunksLen = d.totalSize / d.ChunkSize
+	chunksLen = d.info.Size / d.ChunkSize
 
 	d.chunks = make([]Chunk, 0, chunksLen)
 
@@ -164,7 +189,7 @@ func (d *Download) Init() (err error) {
 			startRange = 0
 		}
 
-		if endRange > d.totalSize || i == (chunksLen-1) {
+		if endRange > d.info.Size || i == (chunksLen-1) {
 			endRange = 0
 		}
 
@@ -297,7 +322,7 @@ func (d Download) Context() context.Context {
 
 // TotalSize returns file total size (0 if unknown).
 func (d Download) TotalSize() uint64 {
-	return d.totalSize
+	return d.info.Size
 }
 
 // Size returns downloaded size.
@@ -334,7 +359,7 @@ func (d *Download) Write(b []byte) (int, error) {
 
 // IsRangeable returns file server partial content support state.
 func (d Download) IsRangeable() bool {
-	return d.rangeable
+	return d.info.Rangeable
 }
 
 // Download chunks
