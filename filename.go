@@ -1,9 +1,10 @@
 package got
 
 import (
-	"strings"
+	"mime"
 	"net/url"
 	"path/filepath"
+	"strings"
 )
 
 // DefaultFileName is the fallback name for GetFilename.
@@ -20,18 +21,13 @@ func GetFilename(URL string) string {
 	return DefaultFileName
 }
 
-
 func getNameFromHeader(val string) string {
 
 	if val == "" || strings.Contains(val, "..") || strings.Contains(val, "/") || strings.Contains(val, "\\") {
 		return ""
 	}
 
-	parts := strings.SplitAfter(val, "filename=")
+	_, params, _ := mime.ParseMediaType(val)
 
-	if len(parts) >= 2 {
-		return strings.Trim(parts[1], `"`)
-	}
-
-	return ""
+	return params["filename"]
 }
