@@ -47,6 +47,12 @@ func NewHttptestServer() *httptest.Server {
 			http.ServeFile(w, r, "go.mod")
 			return
 
+		case "/file_name":
+
+			w.Header().Set("Content-Disposition", `attachment; filename="go.mod"`)
+			http.ServeFile(w, r, "go.mod")
+			return
+
 		case "/not_found":
 		}
 

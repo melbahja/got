@@ -8,7 +8,6 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/urfave/cli/v2"
 	"gitlab.com/poldi1405/go-ansi"
 	"gitlab.com/poldi1405/go-indicators/progress"
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 var version string
@@ -87,19 +87,27 @@ func main() {
 
 func run(ctx context.Context, c *cli.Context) error {
 
-	// New *Got.
-	g := got.NewWithContext(ctx)
-	var p progress.Progress
-	p.SetStyle(simpleProgressStyle)
-	p.Width = 30
+	var (
+		g *got.Got           = got.NewWithContext(ctx)
+		p *progress.Progress = new(progress.Progress)
+	)
 
-	// Progress.
+	// Set progress style.
+	p.SetStyle(progressStyle)
+
+	// Progress func.
 	g.ProgressFunc = func(d *got.Download) {
+
+		// 55 is just an estimation of the text showed with the progress.
+		// it's working fine with $COLUMNS >= 47
+		// TODO: hide progress bar on terminal size of $COLUMNS <= 46
+		p.Width = getWidth() - 55
 
 		perc, err := progress.GetPercentage(float64(d.Size()), float64(d.TotalSize()))
 		if err != nil {
 			perc = 100
 		}
+
 		fmt.Printf(
 			" %6.2f%% %s%s%s %s/%s @ %s/s%s\r",
 			perc,
@@ -163,6 +171,15 @@ func run(ctx context.Context, c *cli.Context) error {
 	return nil
 }
 
+func getWidth() int {
+
+	if width, _, err := terminal.GetSize(0); err == nil && width > 0 {
+		return width
+	}
+
+	return 80
+}
+
 func multiDownload(ctx context.Context, c *cli.Context, g *got.Got, scanner *bufio.Scanner) error {
 
 	for scanner.Scan() {
@@ -190,15 +207,10 @@ func download(ctx context.Context, c *cli.Context, g *got.Got, url string) (err 
 		return err
 	}
 
-	fname := c.String("output")
-
-	if fname == "" {
-		fname = got.GetFilename(url)
-	}
-
 	return g.Do(&got.Download{
 		URL:         url,
-		Dest:        filepath.Join(c.String("dir"), fname),
+		Dir:         c.String("dir"),
+		Name:        c.String("output"),
 		Interval:    100,
 		ChunkSize:   c.Uint64("size"),
 		Concurrency: c.Uint("concurrency"),

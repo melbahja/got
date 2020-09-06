@@ -40,6 +40,7 @@ func TestDownloading(t *testing.T) {
 	t.Run("downloadOkFileContentTest", downloadOkFileContentTest)
 	t.Run("downloadHeadNotSupported", downloadHeadNotSupported)
 	t.Run("downloadPartialContentNotSupportedTest", downloadPartialContentNotSupportedTest)
+	t.Run("getFilenameTest", getFilenameTest)
 }
 
 func getInfoTest(t *testing.T) {
@@ -51,20 +52,43 @@ func getInfoTest(t *testing.T) {
 
 	dl.Client = got.GetDefaultClient()
 
-	size, rangeable, err := dl.GetInfo()
+	info, err := dl.GetInfo()
 
 	if err != nil {
 		t.Error(err)
 		return
 	}
 
-	if rangeable == false {
+	if info.Rangeable == false {
 		t.Error("rangeable should be true")
 	}
 
-	if size != uint64(okFileStat.Size()) {
-		t.Errorf("Invalid file size, wants %d but got %d", okFileStat.Size(), size)
+	if info.Size != uint64(okFileStat.Size()) {
+		t.Errorf("Invalid file size, wants %d but got %d", okFileStat.Size(), info.Size)
 	}
+}
+
+func getFilenameTest(t *testing.T) {
+
+	tmpFile := createTemp()
+	defer clean(tmpFile)
+
+	dl := got.NewDownload(context.Background(), httpt.URL+"/file_name", tmpFile)
+
+	dl.Client = got.GetDefaultClient()
+
+	info, err := dl.GetInfo()
+
+	if err != nil {
+
+		t.Errorf("Unexpected error: " + err.Error())
+	}
+
+	if info.Name != "go.mod" {
+
+		t.Errorf("Expecting file name to be: go.mod but got: "+ info.Name)
+	}
+
 }
 
 func okInitTest(t *testing.T) {

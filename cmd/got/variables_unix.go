@@ -9,10 +9,11 @@ import (
 )
 
 var (
-	simpleProgressStyle = "block"
-	r, l                = "|", "|"
+	progressStyle = "block"
+	r, l          = "|", "|"
 )
 
 func color(content ...interface{}) string {
 	return ansi.Blue(fmt.Sprint(content...))
 }
+

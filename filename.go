@@ -1,6 +1,7 @@
 package got
 
 import (
+	"strings"
 	"net/url"
 	"path/filepath"
 )
@@ -17,4 +18,20 @@ func GetFilename(URL string) string {
 	}
 
 	return DefaultFileName
+}
+
+
+func getNameFromHeader(val string) string {
+
+	if val == "" || strings.Contains(val, "..") || strings.Contains(val, "/") || strings.Contains(val, "\\") {
+		return ""
+	}
+
+	parts := strings.SplitAfter(val, "filename=")
+
+	if len(parts) >= 2 {
+		return strings.Trim(parts[1], `"`)
+	}
+
+	return ""
 }
