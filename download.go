@@ -76,8 +76,8 @@ func (d Download) GetInfo() (*Info, error) {
 	}
 
 	return &Info{
-		Size: uint64(res.ContentLength),
-		Name: getNameFromHeader(res.Header.Get("content-disposition")),
+		Size:      uint64(res.ContentLength),
+		Name:      getNameFromHeader(res.Header.Get("content-disposition")),
 		Rangeable: res.Header.Get("accept-ranges") == "bytes",
 	}, nil
 }

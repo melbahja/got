@@ -13,4 +13,3 @@ var (
 func color(content ...interface{}) string {
 	return fmt.Sprint(content...)
 }
-

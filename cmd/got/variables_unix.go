@@ -16,4 +16,3 @@ var (
 func color(content ...interface{}) string {
 	return ansi.Blue(fmt.Sprint(content...))
 }
-

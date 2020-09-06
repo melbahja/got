@@ -86,7 +86,7 @@ func getFilenameTest(t *testing.T) {
 
 	if info.Name != "go.mod" {
 
-		t.Errorf("Expecting file name to be: go.mod but got: "+ info.Name)
+		t.Errorf("Expecting file name to be: go.mod but got: " + info.Name)
 	}
 
 }

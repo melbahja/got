@@ -16,14 +16,12 @@ var TestUrls = map[string]string{
 }
 
 var TestHeaderValues = map[string]string{
-	`attachment`:    "",
-	`attachment; filename="filename.jpg"`:           "filename.jpg",
-	`attachment; filename="../filename.jpg"`:         "",
-	`attachment; filename="../../../etc/passwd"`:     "",
-	`attachment; name="test"; filename="go.mp4"`:     "go.mp4",
+	`attachment`:                                 "",
+	`attachment; filename="filename.jpg"`:        "filename.jpg",
+	`attachment; filename="../filename.jpg"`:     "",
+	`attachment; filename="../../../etc/passwd"`: "",
+	`attachment; name="test"; filename="go.mp4"`: "go.mp4",
 }
-
-
 
 func TestGetFilename(t *testing.T) {
 	for url, expected := range TestUrls {
@@ -32,7 +30,6 @@ func TestGetFilename(t *testing.T) {
 		}
 	}
 }
-
 
 func TestGetDefaultFileNameFromHeader(t *testing.T) {
 	for url, expected := range TestHeaderValues {
