@@ -23,11 +23,12 @@ func GetFilename(URL string) string {
 
 func getNameFromHeader(val string) string {
 
-	if val == "" || strings.Contains(val, "..") || strings.Contains(val, "/") || strings.Contains(val, "\\") {
+	_, params, err := mime.ParseMediaType(val)
+
+	// Prevent path traversal
+	if err != nil || strings.Contains(params["filename"], "..") || strings.Contains(params["filename"], "/") || strings.Contains(params["filename"], "\\") {
 		return ""
 	}
-
-	_, params, _ := mime.ParseMediaType(val)
 
 	return params["filename"]
 }
