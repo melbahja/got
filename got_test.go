@@ -39,9 +39,9 @@ func NewHttptestServer() *httptest.Server {
 
 		case "/ok_file_with_range_delay":
 
-			if strings.Contains(r.Header.Get("range"), "3-") {
+			if r.Method == http.MethodGet && strings.Contains(r.Header.Get("range"), "3-") {
 
-				time.Sleep(2 * time.Second)
+				time.Sleep(3 * time.Second)
 			}
 
 			http.ServeFile(w, r, "go.mod")
