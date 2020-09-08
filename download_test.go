@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/melbahja/got"
 )
@@ -38,9 +39,11 @@ func TestDownloading(t *testing.T) {
 	t.Run("downloadOkFileTest", downloadOkFileTest)
 	t.Run("downloadNotFoundTest", downloadNotFoundTest)
 	t.Run("downloadOkFileContentTest", downloadOkFileContentTest)
+	t.Run("downloadTimeoutContextTest", downloadTimeoutContextTest)
 	t.Run("downloadHeadNotSupported", downloadHeadNotSupported)
 	t.Run("downloadPartialContentNotSupportedTest", downloadPartialContentNotSupportedTest)
 	t.Run("getFilenameTest", getFilenameTest)
+	t.Run("coverTests", coverTests)
 }
 
 func getInfoTest(t *testing.T) {
@@ -49,8 +52,6 @@ func getInfoTest(t *testing.T) {
 	defer clean(tmpFile)
 
 	dl := got.NewDownload(context.Background(), httpt.URL+"/ok_file", tmpFile)
-
-	dl.Client = got.GetDefaultClient()
 
 	info, err := dl.GetInfo()
 
@@ -74,8 +75,6 @@ func getFilenameTest(t *testing.T) {
 	defer clean(tmpFile)
 
 	dl := got.NewDownload(context.Background(), httpt.URL+"/file_name", tmpFile)
-
-	dl.Client = got.GetDefaultClient()
 
 	info, err := dl.GetInfo()
 
@@ -220,6 +219,40 @@ func downloadOkFileContentTest(t *testing.T) {
 
 }
 
+func downloadTimeoutContextTest(t *testing.T) {
+
+	tmpFile := createTemp()
+	defer clean(tmpFile)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
+	defer cancel()
+
+	d := got.NewDownload(ctx, httpt.URL+"/ok_file_with_range_delay", tmpFile)
+	d.ChunkSize = 2
+
+	if err := d.Init(); err != nil {
+		t.Error(err)
+	}
+
+	if err := d.Start(); err == nil {
+		t.Error("Expecting context deadline")
+	}
+
+	d = got.NewDownload(ctx, httpt.URL+"/ok_file_with_range_delay", tmpFile)
+
+	if _, err := d.GetInfo(); err == nil {
+		t.Error("Expecting context deadline")
+	}
+
+	// just to cover request error.
+	g := got.NewWithContext(ctx)
+	err := g.Download("invalid://ok_file_with_range_delay", tmpFile)
+
+	if err == nil {
+		t.Errorf("Expecting invalid scheme error")
+	}
+}
+
 func downloadHeadNotSupported(t *testing.T) {
 
 	tmpFile := createTemp()
@@ -227,7 +260,7 @@ func downloadHeadNotSupported(t *testing.T) {
 
 	d := &got.Download{
 		URL:  httpt.URL + "/found_and_head_not_allowed",
-		Dest: tmpFile,
+		Dest: "/invalid/path/for_testing_got_start_method",
 	}
 
 	// init
@@ -237,13 +270,15 @@ func downloadHeadNotSupported(t *testing.T) {
 	}
 
 	if d.TotalSize() != 0 {
-
 		t.Error("Size should be 0")
 	}
 
 	if d.IsRangeable() != false {
-
 		t.Error("rangeable should be false")
+	}
+
+	if err := d.Start(); err == nil {
+		t.Error("Expecting invalid path error")
 	}
 }
 
@@ -279,6 +314,35 @@ func downloadPartialContentNotSupportedTest(t *testing.T) {
 	if stat.Size() != 10 {
 		t.Errorf("Invalid size: %d", stat.Size())
 	}
+}
+
+func coverTests(t *testing.T) {
+
+	// Just for testing
+	destPath := createTemp()
+	defer clean(destPath)
+
+	// cover default dest path.
+	// cover progress func and methods
+	d := &got.Download{
+		URL: httpt.URL + "/ok_file_with_range_delay",
+	}
+
+	// init
+	if err := d.Init(); err != nil {
+		t.Error(err)
+	}
+
+	if d.Name() != got.DefaultFileName {
+		t.Errorf("Expecting name to be: %s but got: %s", got.DefaultFileName, d.Name())
+	}
+
+	go d.RunProgress(func(d *got.Download) {
+		d.Size()
+		d.Speed()
+		d.AvgSpeed()
+		d.TotalCost()
+	})
 }
 
 func ExampleDownload() {
