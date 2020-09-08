@@ -32,7 +32,7 @@ type (
 
 		Concurrency uint
 
-		URL, Dir, Name, Dest string
+		URL, Dir, Dest string
 
 		Interval, ChunkSize, MinChunkSize, MaxChunkSize uint64
 
@@ -41,6 +41,8 @@ type (
 		ctx context.Context
 
 		size, lastSize uint64
+
+		name string
 
 		info *Info
 
@@ -91,7 +93,7 @@ func (d *Download) Init() (err error) {
 
 	// Set default client.
 	if d.Client == nil {
-		d.Client = GetDefaultClient()
+		d.Client = DefaultClient
 	}
 
 	// Set default context.
@@ -104,19 +106,6 @@ func (d *Download) Init() (err error) {
 		return err
 	}
 
-	// Set default dest path.
-	if d.Dest == "" {
-
-		fname := d.info.Name
-
-		// if info name invalid get name from url.
-		if fname == "" {
-			fname = GetFilename(d.URL)
-		}
-
-		d.Dest = filepath.Join(d.Dir, fname)
-	}
-
 	// Partial content not supported 😢!
 	if d.info.Rangeable == false || d.info.Size == 0 {
 		return nil
@@ -124,53 +113,12 @@ func (d *Download) Init() (err error) {
 
 	// Set concurrency default.
 	if d.Concurrency == 0 {
-
-		d.Concurrency = uint(runtime.NumCPU() * 3)
-
-		// Set default max concurrency to 20.
-		if d.Concurrency > 20 {
-			d.Concurrency = 20
-		}
-
-		// Set default min concurrency to 4.
-		if d.Concurrency <= 2 {
-			d.Concurrency = 4
-		}
+		d.Concurrency = getDefaultConcurrency()
 	}
 
 	// Set default chunk size
 	if d.ChunkSize == 0 {
-
-		d.ChunkSize = d.info.Size / uint64(d.Concurrency)
-
-		// if chunk size >= 102400000 bytes set default to (ChunkSize / 2)
-		if d.ChunkSize >= 102400000 {
-			d.ChunkSize = d.ChunkSize / 2
-		}
-
-		// Set default min chunk size to 2m, or file size / 2
-		if d.MinChunkSize == 0 {
-
-			d.MinChunkSize = 2000000
-
-			if d.MinChunkSize >= d.info.Size {
-				d.MinChunkSize = d.info.Size / 2
-			}
-		}
-
-		// if Chunk size < Min size set chunk size to min.
-		if d.ChunkSize < d.MinChunkSize {
-			d.ChunkSize = d.MinChunkSize
-		}
-
-		// Change ChunkSize if MaxChunkSize are set and ChunkSize > Max size
-		if d.MaxChunkSize > 0 && d.ChunkSize > d.MaxChunkSize {
-			d.ChunkSize = d.MaxChunkSize
-		}
-
-	} else if d.ChunkSize >= d.info.Size {
-
-		d.ChunkSize = d.info.Size / 2
+		d.ChunkSize = getDefaultChunkSize(d.info.Size, d.MinChunkSize, d.MaxChunkSize, uint64(d.Concurrency))
 	}
 
 	var i, startRange, endRange, chunksLen uint64
@@ -211,34 +159,13 @@ func (d *Download) Init() (err error) {
 }
 
 // Start downloads the file chunks, and merges them.
-func (d *Download) Start() error {
+func (d *Download) Start() (err error) {
 
-	var (
-		err  error
-		temp string
-	)
-
-	// Create a new temp dir for this download.
-	if temp, err = ioutil.TempDir("", "GotChunks"); err != nil {
-		return err
-	}
-
-	done := make(chan struct{}, 1)
-	errs := make(chan error, 1)
-
-	defer func() {
-
-		// Close channels.
-		close(done)
-		close(errs)
-		// Remove temp dir.
-		os.RemoveAll(temp)
-	}()
-
-	// Partial content not supported, just download the file in one chunk.
+	// Partial content not supported,
+	// just download the file in one chunk.
 	if len(d.chunks) == 0 {
 
-		file, err := os.Create(d.Dest)
+		file, err := os.Create(d.Name())
 
 		if err != nil {
 			return err
@@ -246,39 +173,37 @@ func (d *Download) Start() error {
 
 		defer file.Close()
 
-		return d.DownloadChunk(d.ctx, Chunk{}, file)
+		return d.DownloadChunk(Chunk{}, file)
 	}
 
-	go func() {
-		select {
-		case <-d.ctx.Done():
-			// System or user interrupted the program
-			errs <- ErrDownloadAborted
-			return
-		case <-done:
-			// Everything went ok, no interruptions
-			return
-		}
-	}()
+	var (
+		temp string
+		done = make(chan struct{}, 1)
+		errs = make(chan error, 1)
+	)
+
+	// Create a new temp dir for this download.
+	if temp, err = ioutil.TempDir("", "GotChunks"); err != nil {
+		return err
+	}
+	defer os.RemoveAll(temp)
 
 	// Download chunks.
-	go d.dl(d.ctx, temp, errs)
+	go d.dl(temp, errs)
 
 	// Merge chunks.
 	go func() {
-		errs <- d.merge(d.ctx)
+		errs <- d.merge()
 	}()
 
-	// Wait for chunks...
-	if err := <-errs; err != nil {
-
-		// Remove dest file on error.
-		os.Remove(d.Dest)
-
-		return err
+	select {
+	case <-done:
+	case err = <-errs:
+	case <-d.ctx.Done():
+		err = d.ctx.Err()
 	}
 
-	return nil
+	return
 }
 
 // RunProgress runs ProgressFunc based on Interval and updates lastSize.
@@ -363,7 +288,7 @@ func (d Download) IsRangeable() bool {
 }
 
 // Download chunks
-func (d *Download) dl(ctx context.Context, temp string, errc chan error) {
+func (d *Download) dl(temp string, errc chan error) {
 
 	var (
 		// Wait group.
@@ -394,7 +319,7 @@ func (d *Download) dl(ctx context.Context, temp string, errc chan error) {
 			defer chunk.Close()
 
 			// Download chunk.
-			if err = d.DownloadChunk(ctx, d.chunks[i], chunk); err != nil {
+			if err = d.DownloadChunk(d.chunks[i], chunk); err != nil {
 				errc <- err
 				return
 			}
@@ -413,9 +338,9 @@ func (d *Download) dl(ctx context.Context, temp string, errc chan error) {
 }
 
 // Merge downloaded chunks.
-func (d *Download) merge(ctx context.Context) error {
+func (d *Download) merge() error {
 
-	file, err := os.Create(d.Dest)
+	file, err := os.Create(d.Name())
 	if err != nil {
 		return err
 	}
@@ -425,9 +350,9 @@ func (d *Download) merge(ctx context.Context) error {
 	for i := range d.chunks {
 
 		select {
+		case <-d.ctx.Done():
+			return d.ctx.Err()
 		case <-d.chunks[i].Done:
-		case <-ctx.Done():
-			return ctx.Err()
 		}
 
 		chunk, err := os.Open(d.chunks[i].Path)
@@ -452,8 +377,34 @@ func (d *Download) merge(ctx context.Context) error {
 	return nil
 }
 
+// Name returns the downloaded file path.
+func (d *Download) Name() string {
+
+	// Avoid returning different path at runtime.
+	if d.name == "" {
+
+		fileName := d.Dest
+
+		// Set default file name.
+		if fileName == "" {
+
+			// Content disposition name.
+			fileName = d.info.Name
+
+			// if name invalid get name from url.
+			if fileName == "" {
+				fileName = GetFilename(d.URL)
+			}
+		}
+
+		d.name = filepath.Join(d.Dir, fileName)
+	}
+
+	return d.name
+}
+
 // DownloadChunk downloads a file chunk.
-func (d *Download) DownloadChunk(ctx context.Context, c Chunk, dest *os.File) error {
+func (d *Download) DownloadChunk(c Chunk, dest *os.File) error {
 
 	var (
 		err error
@@ -461,7 +412,7 @@ func (d *Download) DownloadChunk(ctx context.Context, c Chunk, dest *os.File) er
 		res *http.Response
 	)
 
-	if req, err = NewRequest(ctx, "GET", d.URL); err != nil {
+	if req, err = NewRequest(d.ctx, "GET", d.URL); err != nil {
 		return err
 	}
 
@@ -487,8 +438,63 @@ func (d *Download) DownloadChunk(ctx context.Context, c Chunk, dest *os.File) er
 // NewDownload returns new *Download with context.
 func NewDownload(ctx context.Context, URL, dest string) *Download {
 	return &Download{
-		ctx:  ctx,
-		URL:  URL,
-		Dest: dest,
+		ctx:    ctx,
+		URL:    URL,
+		Dest:   dest,
+		Client: DefaultClient,
 	}
+}
+
+func getDefaultConcurrency() uint {
+
+	c := uint(runtime.NumCPU() * 3)
+
+	// Set default max concurrency to 20.
+	if c > 20 {
+		c = 20
+	}
+
+	// Set default min concurrency to 4.
+	if c <= 2 {
+		c = 4
+	}
+
+	return c
+}
+
+func getDefaultChunkSize(totalSize, min, max, concurrency uint64) uint64 {
+
+	cs := totalSize / concurrency
+
+	// if chunk size >= 102400000 bytes set default to (ChunkSize / 2)
+	if cs >= 102400000 {
+		cs = cs / 2
+	}
+
+	// Set default min chunk size to 2m, or file size / 2
+	if min == 0 {
+
+		min = 2097152
+
+		if min >= totalSize {
+			min = totalSize / 2
+		}
+	}
+
+	// if Chunk size < Min size set chunk size to min.
+	if cs < min {
+		cs = min
+	}
+
+	// Change ChunkSize if MaxChunkSize are set and ChunkSize > Max size
+	if max > 0 && cs > max {
+		cs = max
+	}
+
+	// When chunk size > total file size, divide chunk / 2
+	if cs >= totalSize {
+		cs = totalSize / 2
+	}
+
+	return cs
 }
