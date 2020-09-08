@@ -44,27 +44,27 @@ func main() {
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:    "output",
-				Usage:   "Download save `path`.",
-				Aliases: []string{"out", "o"},
+				Usage:   "Download `path`, if dir passed the path witll be `dir + output`.",
+				Aliases: []string{"o"},
 			},
 			&cli.StringFlag{
 				Name:    "dir",
-				Usage:   "Save downloaded file to `directory`.",
+				Usage:   "Save downloaded file to a `directory`.",
 				Aliases: []string{"d"},
 			},
 			&cli.StringFlag{
 				Name:    "file",
-				Usage:   "Batch download file from list in `file`.",
+				Usage:   "Batch download from list of urls in a `file`.",
 				Aliases: []string{"bf", "f"},
 			},
 			&cli.Uint64Flag{
 				Name:    "size",
-				Usage:   "File chunks size in `bytes`.",
+				Usage:   "Chunk size in `bytes` to split the file.",
 				Aliases: []string{"chunk"},
 			},
 			&cli.UintFlag{
 				Name:    "concurrency",
-				Usage:   "Number of chunks to download at the same time.",
+				Usage:   "Chunks that will be downloaded concurrently.",
 				Aliases: []string{"c"},
 			},
 		},
@@ -165,7 +165,7 @@ func run(ctx context.Context, c *cli.Context) error {
 		}
 
 		fmt.Print(ansi.ClearLine())
-		fmt.Println(fmt.Sprintf("URL: %s done!", url))
+		fmt.Println(fmt.Sprintf("✔ %s", url))
 	}
 
 	return nil
@@ -195,7 +195,7 @@ func multiDownload(ctx context.Context, c *cli.Context, g *got.Got, scanner *buf
 		}
 
 		fmt.Print(ansi.ClearLine())
-		fmt.Println(fmt.Sprintf("URL: %s done!", url))
+		fmt.Println(fmt.Sprintf("✔ %s", url))
 	}
 
 	return nil
@@ -210,8 +210,8 @@ func download(ctx context.Context, c *cli.Context, g *got.Got, url string) (err 
 	return g.Do(&got.Download{
 		URL:         url,
 		Dir:         c.String("dir"),
-		Name:        c.String("output"),
-		Interval:    100,
+		Dest:        c.String("output"),
+		Interval:    150,
 		ChunkSize:   c.Uint64("size"),
 		Concurrency: c.Uint("concurrency"),
 	})
