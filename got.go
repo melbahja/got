@@ -22,6 +22,16 @@ const DefaulUserAgent = "Got/1.0"
 // ErrDownloadAborted - When download is aborted by the OS before it is completed, ErrDownloadAborted will be triggered
 var ErrDownloadAborted = errors.New("Operation aborted")
 
+// DefaultClient is the default http client for got requests.
+var DefaultClient = &http.Client{
+	Transport: &http.Transport{
+		MaxIdleConns:        10,
+		IdleConnTimeout:     30 * time.Second,
+		TLSHandshakeTimeout: 5 * time.Second,
+		Proxy:               http.ProxyFromEnvironment,
+	},
+}
+
 // Download creates *Download item and runs it.
 func (g Got) Download(URL, dest string) error {
 
@@ -61,7 +71,7 @@ func New() *Got {
 func NewWithContext(ctx context.Context) *Got {
 	return &Got{
 		ctx:    ctx,
-		Client: GetDefaultClient(),
+		Client: DefaultClient,
 	}
 }
 
@@ -74,17 +84,4 @@ func NewRequest(ctx context.Context, method, URL string) (req *http.Request, err
 
 	req.Header.Set("User-Agent", DefaulUserAgent)
 	return
-}
-
-// GetDefaultClient returns Got default http.Client
-func GetDefaultClient() *http.Client {
-
-	return &http.Client{
-		Transport: &http.Transport{
-			MaxIdleConns:        10,
-			IdleConnTimeout:     30 * time.Second,
-			TLSHandshakeTimeout: 5 * time.Second,
-			Proxy:               http.ProxyFromEnvironment,
-		},
-	}
 }
