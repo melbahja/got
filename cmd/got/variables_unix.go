@@ -10,7 +10,7 @@ import (
 
 var (
 	progressStyle = "block"
-	r, l          = "|", "|"
+	r, l          = "▕", "▏"
 )
 
 func color(content ...interface{}) string {

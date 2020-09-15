@@ -136,7 +136,7 @@ func run(ctx context.Context, c *cli.Context) error {
 	}
 
 	// Piped stdin
-	if info.Mode()&os.ModeNamedPipe > 0 {
+	if info.Mode()&os.ModeNamedPipe > 0 || info.Size() > 0 {
 
 		if err := multiDownload(ctx, c, g, bufio.NewScanner(os.Stdin)); err != nil {
 			return err
