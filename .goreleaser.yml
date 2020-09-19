@@ -2,13 +2,14 @@ project_name: got
 before:
   hooks:
     - go mod download
+    - go mod tidy
 builds:
 -
   env:
     - CGO_ENABLED=0
   dir: cmd/got
   ldflags:
-    - -X main.version={{.Version}}+{{.ShortCommit}}
+    - -s -w -X main.version={{.Version}}+{{.ShortCommit}}
   goos:
     - linux
     - darwin
@@ -16,9 +17,13 @@ builds:
     - windows
   goarch:
     - amd64
+    - arm64
+    - arm
+    - 386
 
 archives:
 - replacements:
+    386: 32bit
     darwin: Darwin
     linux: Linux
     freebsd: Freebsd
