@@ -75,7 +75,7 @@ func (d Download) GetInfo() (*Info, error) {
 	return &Info{}, nil
 }
 
-// getInfoWithFirstChunk download the first byte of the file, to get content length in
+// getInfoFromGetRequest download the first byte of the file, to get content length in
 // case of HEAD request not supported, and if partial content not supported so this will download the
 // file in one chunk. it returns *Info, and error if any.
 func (d *Download) getInfoFromGetRequest() (*Info, error) {
@@ -116,7 +116,7 @@ func (d *Download) getInfoFromGetRequest() (*Info, error) {
 
 	// Get content length from content-range response header,
 	// if content-range exists, that's mean partial content is supported.
-	if cr := res.Header.Get("content-range"); cr != "" {
+	if cr := res.Header.Get("content-range"); cr != "" && res.ContentLength == 2 {
 		l := strings.Split(cr, "/")
 		if len(l) == 2 {
 			if length, err := strconv.ParseUint(l[1], 10, 64); err == nil {
@@ -154,12 +154,10 @@ func (d *Download) Init() (err error) {
 		return err
 	}
 
-	// Partial content not supported 😢!
+	// Maybe partial content not supported 😢!
 	if d.info.Rangeable == false || d.info.Size == 0 {
 
-		d.info, err = d.getInfoFromGetRequest()
-
-		if err != nil {
+		if d.info, err = d.getInfoFromGetRequest(); err != nil {
 			return err
 		}
 
