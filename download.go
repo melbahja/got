@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -61,27 +63,73 @@ func (d Download) GetInfo() (*Info, error) {
 		return nil, err
 	}
 
-	res, err := d.Client.Do(req)
+	if res, err := d.Client.Do(req); err == nil && res.StatusCode == http.StatusOK {
+
+		return &Info{
+			Size:      uint64(res.ContentLength),
+			Name:      getNameFromHeader(res.Header.Get("content-disposition")),
+			Rangeable: res.Header.Get("accept-ranges") == "bytes",
+		}, nil
+	}
+
+	return &Info{}, nil
+}
+
+// getInfoFromGetRequest download the first byte of the file, to get content length in
+// case of HEAD request not supported, and if partial content not supported so this will download the
+// file in one chunk. it returns *Info, and error if any.
+func (d *Download) getInfoFromGetRequest() (*Info, error) {
+
+	var (
+		err error
+		req *http.Request
+		res *http.Response
+	)
+
+	if req, err = NewRequest(d.ctx, "GET", d.URL); err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Range", "bytes=0-1")
+
+	if res, err = d.Client.Do(req); err != nil {
+		return nil, err
+	}
+
+	defer res.Body.Close()
+
+	if res.StatusCode >= 300 {
+		return nil, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
+	}
+
+	dest, err := os.Create(d.Name())
 
 	if err != nil {
 		return nil, err
 	}
 
-	if res.StatusCode < http.StatusOK || res.StatusCode >= http.StatusBadRequest {
+	defer dest.Close()
 
-		// On 4xx HEAD request (work around for #3).
-		if res.StatusCode != 404 && res.StatusCode >= 400 && res.StatusCode < 500 {
-			return &Info{}, nil
-		}
-
-		return nil, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
+	if _, err = io.Copy(dest, io.TeeReader(res.Body, d)); err != nil {
+		return nil, err
 	}
 
-	return &Info{
-		Size:      uint64(res.ContentLength),
-		Name:      getNameFromHeader(res.Header.Get("content-disposition")),
-		Rangeable: res.Header.Get("accept-ranges") == "bytes",
-	}, nil
+	// Get content length from content-range response header,
+	// if content-range exists, that's mean partial content is supported.
+	if cr := res.Header.Get("content-range"); cr != "" && res.ContentLength == 2 {
+		l := strings.Split(cr, "/")
+		if len(l) == 2 {
+			if length, err := strconv.ParseUint(l[1], 10, 64); err == nil {
+				return &Info{
+					Size:      length,
+					Name:      getNameFromHeader(res.Header.Get("content-disposition")),
+					Rangeable: true,
+				}, nil
+			}
+		}
+	}
+
+	return &Info{}, nil
 }
 
 // Init set defaults and split file into chunks and gets Info,
@@ -106,9 +154,17 @@ func (d *Download) Init() (err error) {
 		return err
 	}
 
-	// Partial content not supported 😢!
+	// Maybe partial content not supported 😢!
 	if d.info.Rangeable == false || d.info.Size == 0 {
-		return nil
+
+		if d.info, err = d.getInfoFromGetRequest(); err != nil {
+			return err
+		}
+
+		// Partial content not supported, and the file downladed.
+		if d.info.Rangeable == false {
+			return nil
+		}
 	}
 
 	// Set concurrency default.
@@ -164,6 +220,11 @@ func (d *Download) Start() (err error) {
 	// Partial content not supported,
 	// just download the file in one chunk.
 	if len(d.chunks) == 0 {
+
+		// The file already downloaded at getInfoFromGetRequest
+		if d.size > 0 {
+			return nil
+		}
 
 		file, err := os.Create(d.Name())
 

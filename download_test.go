@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/melbahja/got"
 )
@@ -224,14 +223,14 @@ func downloadTimeoutContextTest(t *testing.T) {
 	tmpFile := createTemp()
 	defer clean(tmpFile)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Millisecond*500)
-	defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 
 	d := got.NewDownload(ctx, httpt.URL+"/ok_file_with_range_delay", tmpFile)
 	d.ChunkSize = 2
 
-	if err := d.Init(); err != nil {
-		t.Error(err)
+	if err := d.Init(); err == nil {
+		t.Error("Expecting context deadline")
 	}
 
 	if err := d.Start(); err == nil {
@@ -239,10 +238,6 @@ func downloadTimeoutContextTest(t *testing.T) {
 	}
 
 	d = got.NewDownload(ctx, httpt.URL+"/ok_file_with_range_delay", tmpFile)
-
-	if _, err := d.GetInfo(); err == nil {
-		t.Error("Expecting context deadline")
-	}
 
 	// just to cover request error.
 	g := got.NewWithContext(ctx)
@@ -260,7 +255,7 @@ func downloadHeadNotSupported(t *testing.T) {
 
 	d := &got.Download{
 		URL:  httpt.URL + "/found_and_head_not_allowed",
-		Dest: "/invalid/path/for_testing_got_start_method",
+		Dest: tmpFile,
 	}
 
 	// init
@@ -275,6 +270,11 @@ func downloadHeadNotSupported(t *testing.T) {
 
 	if d.IsRangeable() != false {
 		t.Error("rangeable should be false")
+	}
+
+	d = &got.Download{
+		URL:  httpt.URL + "/found_and_head_not_allowed",
+		Dest: "/invalid/path",
 	}
 
 	if err := d.Start(); err == nil {
