@@ -239,7 +239,6 @@ func downloadTimeoutContextTest(t *testing.T) {
 
 	d = got.NewDownload(ctx, httpt.URL+"/ok_file_with_range_delay", tmpFile)
 
-
 	// just to cover request error.
 	g := got.NewWithContext(ctx)
 	err := g.Download("invalid://ok_file_with_range_delay", tmpFile)

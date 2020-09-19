@@ -4,13 +4,13 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"strings"
-	"strconv"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -63,7 +63,7 @@ func (d Download) GetInfo() (*Info, error) {
 		return nil, err
 	}
 
-	if res, err := d.Client.Do(req); err == nil && res.StatusCode == http.StatusOK  {
+	if res, err := d.Client.Do(req); err == nil && res.StatusCode == http.StatusOK {
 
 		return &Info{
 			Size:      uint64(res.ContentLength),
@@ -121,8 +121,8 @@ func (d *Download) getInfoFromGetRequest() (*Info, error) {
 		if len(l) == 2 {
 			if length, err := strconv.ParseUint(l[1], 10, 64); err == nil {
 				return &Info{
-					Size: length,
-					Name: getNameFromHeader(res.Header.Get("content-disposition")),
+					Size:      length,
+					Name:      getNameFromHeader(res.Header.Get("content-disposition")),
 					Rangeable: true,
 				}, nil
 			}
@@ -268,7 +268,7 @@ func (d *Download) Start() (err error) {
 
 	return
 }
-//////// curl -r 0-0 -i https://speed.hetzner.de/100MB.bin
+
 // RunProgress runs ProgressFunc based on Interval and updates lastSize.
 func (d *Download) RunProgress(fn ProgressFunc) {
 
