@@ -38,6 +38,8 @@ type (
 
 		Interval, ChunkSize, MinChunkSize, MaxChunkSize uint64
 
+		Header []GotHeader
+
 		StopProgress bool
 
 		ctx context.Context
@@ -54,6 +56,11 @@ type (
 	}
 )
 
+type GotHeader struct {
+	Key   string
+	Value string
+}
+
 // GetInfo returns URL info, and error if any.
 func (d Download) GetInfo() (*Info, error) {
 
@@ -61,6 +68,10 @@ func (d Download) GetInfo() (*Info, error) {
 
 	if err != nil {
 		return nil, err
+	}
+
+	for _, header := range d.Header {
+		req.Header.Set(header.Key, header.Value)
 	}
 
 	if res, err := d.Client.Do(req); err == nil && res.StatusCode == http.StatusOK {
