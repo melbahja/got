@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -20,6 +21,8 @@ import (
 )
 
 var version string
+
+var HeaderSlice []got.GotHeader
 
 func main() {
 
@@ -66,6 +69,11 @@ func main() {
 				Name:    "concurrency",
 				Usage:   "Chunks that will be downloaded concurrently.",
 				Aliases: []string{"c"},
+			},
+			&cli.StringSliceFlag{
+				Name:    "header",
+				Usage:   "Set these HTTP-Headers on the requests. The format has to be Key: Value",
+				Aliases: []string{"H"},
 			},
 		},
 		Version: version,
@@ -161,6 +169,18 @@ func run(ctx context.Context, c *cli.Context) error {
 		}
 	}
 
+	if c.StringSlice("header") != nil {
+		header := c.StringSlice("header")
+
+		for _, h := range header {
+			split := strings.SplitN(h, ":", 2)
+			if len(split) == 1 {
+				return errors.New("malformatted header " + h)
+			}
+			HeaderSlice = append(HeaderSlice, got.GotHeader{Key: split[0], Value: split[1]})
+		}
+	}
+
 	// Download from args.
 	for _, url := range c.Args().Slice() {
 
@@ -215,6 +235,7 @@ func download(ctx context.Context, c *cli.Context, g *got.Got, url string) (err 
 		URL:         url,
 		Dir:         c.String("dir"),
 		Dest:        c.String("output"),
+		Header:      HeaderSlice,
 		Interval:    150,
 		ChunkSize:   c.Uint64("size"),
 		Concurrency: c.Uint("concurrency"),
