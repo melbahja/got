@@ -100,7 +100,6 @@ func run(ctx context.Context, c *cli.Context) error {
 
 		// 55 is just an estimation of the text showed with the progress.
 		// it's working fine with $COLUMNS >= 47
-		// TODO: hide progress bar on terminal size of $COLUMNS <= 46
 		p.Width = getWidth() - 55
 
 		perc, err := progress.GetPercentage(float64(d.Size()), float64(d.TotalSize()))
@@ -108,12 +107,17 @@ func run(ctx context.Context, c *cli.Context) error {
 			perc = 100
 		}
 
+		var bar string
+		if getWidth() <= 46 {
+			bar = ""
+		} else {
+			bar = r + color(p.GetBar(perc, 100)) + l
+		}
+
 		fmt.Printf(
-			" %6.2f%% %s%s%s %s/%s @ %s/s%s\r",
+			" %6.2f%% %s %s/%s @ %s/s%s\r",
 			perc,
-			r,
-			color(p.GetBar(perc, 100)),
-			l,
+			bar,
 			humanize.Bytes(d.Size()),
 			humanize.Bytes(d.TotalSize()),
 			humanize.Bytes(d.Speed()),
