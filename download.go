@@ -38,6 +38,8 @@ type (
 
 		Interval, ChunkSize, MinChunkSize, MaxChunkSize uint64
 
+		Header []GotHeader
+
 		StopProgress bool
 
 		ctx context.Context
@@ -52,12 +54,17 @@ type (
 
 		startedAt time.Time
 	}
+
+	GotHeader struct {
+		Key   string
+		Value string
+	}
 )
 
 // GetInfo returns URL info, and error if any.
 func (d Download) GetInfo() (*Info, error) {
 
-	req, err := NewRequest(d.ctx, "HEAD", d.URL)
+	req, err := NewRequest(d.ctx, "HEAD", d.URL, d.Header)
 
 	if err != nil {
 		return nil, err
@@ -86,7 +93,7 @@ func (d *Download) getInfoFromGetRequest() (*Info, error) {
 		res *http.Response
 	)
 
-	if req, err = NewRequest(d.ctx, "GET", d.URL); err != nil {
+	if req, err = NewRequest(d.ctx, "GET", d.URL, d.Header); err != nil {
 		return nil, err
 	}
 
@@ -473,7 +480,7 @@ func (d *Download) DownloadChunk(c Chunk, dest *os.File) error {
 		res *http.Response
 	)
 
-	if req, err = NewRequest(d.ctx, "GET", d.URL); err != nil {
+	if req, err = NewRequest(d.ctx, "GET", d.URL, d.Header); err != nil {
 		return err
 	}
 

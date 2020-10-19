@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net/url"
@@ -20,6 +21,8 @@ import (
 )
 
 var version string
+
+var HeaderSlice []got.GotHeader
 
 func main() {
 
@@ -67,6 +70,11 @@ func main() {
 				Usage:   "Chunks that will be downloaded concurrently.",
 				Aliases: []string{"c"},
 			},
+			&cli.StringSliceFlag{
+				Name:    "header",
+				Usage:   "Set these HTTP-Headers on the requests. The format has to be Key: Value",
+				Aliases: []string{"H"},
+			},
 		},
 		Version: version,
 		Authors: []*cli.Author{
@@ -100,7 +108,6 @@ func run(ctx context.Context, c *cli.Context) error {
 
 		// 55 is just an estimation of the text showed with the progress.
 		// it's working fine with $COLUMNS >= 47
-		// TODO: hide progress bar on terminal size of $COLUMNS <= 46
 		p.Width = getWidth() - 55
 
 		perc, err := progress.GetPercentage(float64(d.Size()), float64(d.TotalSize()))
@@ -108,12 +115,17 @@ func run(ctx context.Context, c *cli.Context) error {
 			perc = 100
 		}
 
+		var bar string
+		if getWidth() <= 46 {
+			bar = ""
+		} else {
+			bar = r + color(p.GetBar(perc, 100)) + l
+		}
+
 		fmt.Printf(
-			" %6.2f%% %s%s%s %s/%s @ %s/s%s\r",
+			" %6.2f%% %s %s/%s @ %s/s%s\r",
 			perc,
-			r,
-			color(p.GetBar(perc, 100)),
-			l,
+			bar,
 			humanize.Bytes(d.Size()),
 			humanize.Bytes(d.TotalSize()),
 			humanize.Bytes(d.Speed()),
@@ -154,6 +166,18 @@ func run(ctx context.Context, c *cli.Context) error {
 
 		if err := multiDownload(ctx, c, g, bufio.NewScanner(file)); err != nil {
 			return err
+		}
+	}
+
+	if c.StringSlice("header") != nil {
+		header := c.StringSlice("header")
+
+		for _, h := range header {
+			split := strings.SplitN(h, ":", 2)
+			if len(split) == 1 {
+				return errors.New("malformatted header " + h)
+			}
+			HeaderSlice = append(HeaderSlice, got.GotHeader{Key: split[0], Value: strings.TrimSpace(split[1])})
 		}
 	}
 
@@ -211,6 +235,7 @@ func download(ctx context.Context, c *cli.Context, g *got.Got, url string) (err 
 		URL:         url,
 		Dir:         c.String("dir"),
 		Dest:        c.String("output"),
+		Header:      HeaderSlice,
 		Interval:    150,
 		ChunkSize:   c.Uint64("size"),
 		Concurrency: c.Uint("concurrency"),

@@ -31,6 +31,7 @@ func TestGetInfoAndInit(t *testing.T) {
 	t.Run("getInfoTest", getInfoTest)
 	t.Run("okInitTest", okInitTest)
 	t.Run("errInitTest", errInitTest)
+	t.Run("sendHeadersTest", sendHeadersTest)
 }
 
 func TestDownloading(t *testing.T) {
@@ -51,6 +52,35 @@ func getInfoTest(t *testing.T) {
 	defer clean(tmpFile)
 
 	dl := got.NewDownload(context.Background(), httpt.URL+"/ok_file", tmpFile)
+
+	info, err := dl.GetInfo()
+
+	if err != nil {
+		t.Error(err)
+		return
+	}
+
+	if info.Rangeable == false {
+		t.Error("rangeable should be true")
+	}
+
+	if info.Size != uint64(okFileStat.Size()) {
+		t.Errorf("Invalid file size, wants %d but got %d", okFileStat.Size(), info.Size)
+	}
+}
+
+func sendHeadersTest(t *testing.T) {
+
+	tmpFile := createTemp()
+	defer clean(tmpFile)
+
+	dl := got.NewDownload(context.Background(), httpt.URL+"/header_values", tmpFile)
+	dl.Header = []got.GotHeader{
+		{
+			Key:   "x-test-header",
+			Value: "foobar",
+		},
+	}
 
 	info, err := dl.GetInfo()
 

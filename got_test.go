@@ -53,6 +53,15 @@ func NewHttptestServer() *httptest.Server {
 			http.ServeFile(w, r, "go.mod")
 			return
 
+		case "/header_values":
+			if r.Header.Get("x-test-header") == "foobar" {
+				http.ServeFile(w, r, "go.mod")
+				return
+			}
+
+			w.WriteHeader(403)
+			return
+
 		case "/not_found":
 		}
 
