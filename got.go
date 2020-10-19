@@ -76,12 +76,17 @@ func NewWithContext(ctx context.Context) *Got {
 }
 
 // NewRequest returns a new http.Request and error if any.
-func NewRequest(ctx context.Context, method, URL string) (req *http.Request, err error) {
+func NewRequest(ctx context.Context, method, URL string, header []GotHeader) (req *http.Request, err error) {
 
 	if req, err = http.NewRequestWithContext(ctx, method, URL, nil); err != nil {
 		return
 	}
 
 	req.Header.Set("User-Agent", DefaulUserAgent)
+
+	for _, h := range header {
+		req.Header.Set(h.Key, h.Value)
+	}
+
 	return
 }
