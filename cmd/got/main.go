@@ -177,7 +177,7 @@ func run(ctx context.Context, c *cli.Context) error {
 			if len(split) == 1 {
 				return errors.New("malformatted header " + h)
 			}
-			HeaderSlice = append(HeaderSlice, got.GotHeader{Key: split[0], Value: split[1]})
+			HeaderSlice = append(HeaderSlice, got.GotHeader{Key: split[0], Value: strings.TrimSpace(split[1])})
 		}
 	}
 
