@@ -16,8 +16,8 @@ type Got struct {
 	ctx context.Context
 }
 
-// DefaulUserAgent is the default Got user agent to send http requests.
-const DefaulUserAgent = "Got/1.0"
+// UserAgent is the default Got user agent to send http requests.
+var UserAgent = "Got/1.0"
 
 // ErrDownloadAborted - When download is aborted by the OS before it is completed, ErrDownloadAborted will be triggered
 var ErrDownloadAborted = errors.New("Operation aborted")
@@ -82,7 +82,7 @@ func NewRequest(ctx context.Context, method, URL string, header []GotHeader) (re
 		return
 	}
 
-	req.Header.Set("User-Agent", DefaulUserAgent)
+	req.Header.Set("User-Agent", UserAgent)
 
 	for _, h := range header {
 		req.Header.Set(h.Key, h.Value)

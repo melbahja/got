@@ -72,8 +72,13 @@ func main() {
 			},
 			&cli.StringSliceFlag{
 				Name:    "header",
-				Usage:   "Set these HTTP-Headers on the requests. The format has to be Key: Value",
+				Usage:   `Set these HTTP-Headers on the requests. The format has to be: -H "Key: Value"`,
 				Aliases: []string{"H"},
+			},
+			&cli.StringFlag{
+				Name:    "agent",
+				Usage:   `Set user agent for got HTTP requests.`,
+				Aliases: []string{"u"},
 			},
 		},
 		Version: version,
@@ -145,6 +150,11 @@ func run(ctx context.Context, c *cli.Context) error {
 		if _, err := os.Stat(c.String("dir")); os.IsNotExist(err) {
 			os.MkdirAll(c.String("dir"), os.ModePerm)
 		}
+	}
+
+	// Set default user agent.
+	if c.String("agent") != "" {
+		got.UserAgent = c.String("agent")
 	}
 
 	// Piped stdin
