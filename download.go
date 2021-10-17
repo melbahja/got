@@ -21,7 +21,6 @@ type (
 	// Info holds downloadable file info.
 	Info struct {
 		Size      uint64
-		Name      string
 		Rangeable bool
 	}
 
@@ -46,7 +45,7 @@ type (
 
 		size, lastSize uint64
 
-		name string
+		path string
 
 		info *Info
 
@@ -86,7 +85,7 @@ func (d *Download) GetInfoOrDownload() (*Info, error) {
 		return nil, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
 	}
 
-	if dest, err = os.Create(d.Name()); err != nil {
+	if dest, err = os.Create(d.path); err != nil {
 		return nil, err
 	}
 	defer dest.Close()
@@ -101,9 +100,9 @@ func (d *Download) GetInfoOrDownload() (*Info, error) {
 		l := strings.Split(cr, "/")
 		if len(l) == 2 {
 			if length, err := strconv.ParseUint(l[1], 10, 64); err == nil {
+				d.choosePath(getNameFromHeader(res.Header.Get("content-disposition")))
 				return &Info{
 					Size:      length,
-					Name:      getNameFromHeader(res.Header.Get("content-disposition")),
 					Rangeable: true,
 				}, nil
 			}
@@ -131,6 +130,10 @@ func (d *Download) Init() (err error) {
 	if d.ctx == nil {
 		d.ctx = context.Background()
 	}
+
+	// Set download path. Do this here since we only need to update it
+	// if content-disposition is included in later response
+	d.choosePath(GetFilename(d.URL))
 
 	// Get URL info and partial content support state
 	if d.info, err = d.GetInfoOrDownload(); err != nil {
@@ -201,7 +204,7 @@ func (d *Download) Start() (err error) {
 			return nil
 		}
 
-		file, err := os.Create(d.Name())
+		file, err := os.Create(d.path)
 
 		if err != nil {
 			return err
@@ -376,7 +379,7 @@ func (d *Download) dl(temp string, errc chan error) {
 // Merge downloaded chunks.
 func (d *Download) merge() error {
 
-	file, err := os.Create(d.Name())
+	file, err := os.Create(d.path)
 	if err != nil {
 		return err
 	}
@@ -413,28 +416,28 @@ func (d *Download) merge() error {
 	return nil
 }
 
-// Name returns the downloaded file path.
-func (d *Download) Name() string {
-
-	// Avoid returning different path at runtime.
-	if d.name == "" {
-
-		// Set default file name.
-		var fileName string
-		if d.Dest != "" {
-			fileName = d.Dest
-		} else if d.info.Name != "" {
-			// Content disposition name.
-			fileName = d.info.Name
+// Set the path according to the specified dir and dest, or update with given one
+// This should only be called BEFORE actually downloading the file
+func (d *Download) choosePath(name string) {
+	var path string
+	// d.Dest is given priority for the path
+	if d.Dest != "" {
+		if d.path != "" {
+			// Already set, no need to update
+			return
 		} else {
-			// if name invalid get name from url.
-			fileName = GetFilename(d.URL)
+			path = d.Dest
 		}
-
-		d.name = filepath.Join(d.Dir, fileName)
+	} else if name != "" {
+		path = name
 	}
 
-	return d.name
+	// We will set a default path on the first call,
+	// so the path == "" case is only valid for next calls,
+	// it's only needed to not accidentally set an empty path
+	if path != "" {
+		d.path = filepath.Join(d.Dir, name)
+	}
 }
 
 // DownloadChunk downloads a file chunk.
