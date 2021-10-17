@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -49,7 +48,7 @@ type (
 
 		info *Info
 
-		chunks []Chunk
+		chunks []*Chunk
 
 		startedAt time.Time
 	}
@@ -73,25 +72,25 @@ func (d *Download) GetInfoOrDownload() (*Info, error) {
 	)
 
 	if req, err = NewRequest(d.ctx, "GET", d.URL, append(d.Header, GotHeader{"Range", "bytes=0-0"})); err != nil {
-		return nil, err
+		return &Info{}, err
 	}
 
 	if res, err = d.Client.Do(req); err != nil {
-		return nil, err
+		return &Info{}, err
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode >= 300 {
-		return nil, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
+		return &Info{}, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
 	}
 
 	if dest, err = os.Create(d.Path()); err != nil {
-		return nil, err
+		return &Info{}, err
 	}
 	defer dest.Close()
 
 	if _, err = io.Copy(dest, io.TeeReader(res.Body, d)); err != nil {
-		return nil, err
+		return &Info{}, err
 	}
 
 	// Get content length from content-range response header,
@@ -109,7 +108,7 @@ func (d *Download) GetInfoOrDownload() (*Info, error) {
 			}
 		}
 		// Make sure the caller knows about the problem and we don't just silently fail
-		return nil, fmt.Errorf("Response includes content-range header which is invalid: %s", cr)
+		return &Info{}, fmt.Errorf("Response includes content-range header which is invalid: %s", cr)
 	}
 
 	return &Info{}, nil
@@ -152,36 +151,20 @@ func (d *Download) Init() (err error) {
 		d.ChunkSize = getDefaultChunkSize(d.info.Size, d.MinChunkSize, d.MaxChunkSize, uint64(d.Concurrency))
 	}
 
-	var i, startRange, endRange, chunksLen uint64
-
-	chunksLen = d.info.Size / d.ChunkSize
-
-	d.chunks = make([]Chunk, 0, chunksLen)
+	chunksLen := d.info.Size / d.ChunkSize
+	d.chunks = make([]*Chunk, 0, chunksLen)
 
 	// Set chunk ranges.
-	for ; i < chunksLen; i++ {
+	for i := uint64(0); i < chunksLen; i++ {
 
-		startRange = (d.ChunkSize * i) + i
-		endRange = startRange + d.ChunkSize
+		chunk := new(Chunk)
+		d.chunks = append(d.chunks, chunk)
 
-		if i == 0 {
-			startRange = 0
-		}
-
-		if endRange > d.info.Size || i == (chunksLen-1) {
-			endRange = 0
-		}
-
-		chunk := ChunkPool.Get().(*Chunk)
-		chunk.Path = ""
-		chunk.Start = startRange
-		chunk.End = endRange
-		chunk.Done = make(chan struct{})
-
-		d.chunks = append(d.chunks, *chunk)
-
-		// Break on last chunk if i < chunksLen.
-		if endRange == 0 {
+		chunk.Start = (d.ChunkSize * i) + i
+		chunk.End = chunk.Start + d.ChunkSize
+		if chunk.End >= d.info.Size || i == chunksLen-1 {
+			chunk.End = d.info.Size - 1
+			// Break on last chunk if i < chunksLen
 			break
 		}
 	}
@@ -190,50 +173,34 @@ func (d *Download) Init() (err error) {
 }
 
 // Start downloads the file chunks, and merges them.
+// Must be called only after init
 func (d *Download) Start() (err error) {
-
-	// Partial content not supported,
-	// just download the file in one chunk.
-	if len(d.chunks) == 0 {
-
-		// The file already downloaded at getInfoFromGetRequest
-		if d.size > 0 {
+	// If the file was already downloaded during GetInfoOrDownload, then there will be no chunks
+	if d.info.Rangeable == false {
+		select {
+		case <-d.ctx.Done():
+			return d.ctx.Err()
+		default:
 			return nil
 		}
-
-		file, err := os.Create(d.Path())
-
-		if err != nil {
-			return err
-		}
-
-		defer file.Close()
-
-		return d.DownloadChunk(Chunk{}, file)
 	}
 
-	var (
-		temp string
-		done = make(chan struct{}, 1)
-		errs = make(chan error, 1)
-	)
+	// Otherwise there are always at least 2 chunks
 
-	// Create a new temp dir for this download.
-	if temp, err = ioutil.TempDir("", "GotChunks"); err != nil {
+	file, err := os.Create(d.Path())
+	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(temp)
+	defer file.Close()
+
+	// Allocate the file completely so that we can write concurrently
+	file.Truncate(int64(d.TotalSize()))
 
 	// Download chunks.
-	go d.dl(temp, errs)
-
-	// Merge chunks.
-	go func() {
-		errs <- d.merge()
-	}()
+	errs := make(chan error, 1)
+	go d.dl(file, errs)
 
 	select {
-	case <-done:
 	case err = <-errs:
 	case <-d.ctx.Done():
 		err = d.ctx.Err()
@@ -277,27 +244,27 @@ func (d *Download) RunProgress(fn ProgressFunc) {
 }
 
 // Context returns download context.
-func (d Download) Context() context.Context {
+func (d *Download) Context() context.Context {
 	return d.ctx
 }
 
 // TotalSize returns file total size (0 if unknown).
-func (d Download) TotalSize() uint64 {
+func (d *Download) TotalSize() uint64 {
 	return d.info.Size
 }
 
 // Size returns downloaded size.
-func (d Download) Size() uint64 {
+func (d *Download) Size() uint64 {
 	return atomic.LoadUint64(&d.size)
 }
 
 // Speed returns download speed.
-func (d Download) Speed() uint64 {
+func (d *Download) Speed() uint64 {
 	return (atomic.LoadUint64(&d.size) - atomic.LoadUint64(&d.lastSize)) / d.Interval * 1000
 }
 
 // AvgSpeed returns average download speed.
-func (d Download) AvgSpeed() uint64 {
+func (d *Download) AvgSpeed() uint64 {
 
 	if totalMills := d.TotalCost().Milliseconds(); totalMills > 0 {
 		return uint64(atomic.LoadUint64(&d.size) / uint64(totalMills) * 1000)
@@ -307,7 +274,7 @@ func (d Download) AvgSpeed() uint64 {
 }
 
 // TotalCost returns download duration.
-func (d Download) TotalCost() time.Duration {
+func (d *Download) TotalCost() time.Duration {
 	return time.Now().Sub(d.startedAt)
 }
 
@@ -319,12 +286,12 @@ func (d *Download) Write(b []byte) (int, error) {
 }
 
 // IsRangeable returns file server partial content support state.
-func (d Download) IsRangeable() bool {
+func (d *Download) IsRangeable() bool {
 	return d.info.Rangeable
 }
 
 // Download chunks
-func (d *Download) dl(temp string, errc chan error) {
+func (d *Download) dl(dest io.WriterAt, errC chan error) {
 
 	var (
 		// Wait group.
@@ -340,77 +307,20 @@ func (d *Download) dl(temp string, errc chan error) {
 		wg.Add(1)
 
 		go func(i int) {
-
 			defer wg.Done()
 
-			// Create chunk in temp dir.
-			chunk, err := os.Create(filepath.Join(temp, fmt.Sprintf("chunk-%d", i)))
-
-			if err != nil {
-				errc <- err
+			// Concurrently download and write chunk
+			if err := d.DownloadChunk(d.chunks[i], &OffsetWriter{dest, int64(d.chunks[i].Start)}); err != nil {
+				errC <- err
 				return
 			}
-
-			// Close chunk fd.
-			defer chunk.Close()
-
-			// Download chunk.
-			if err = d.DownloadChunk(d.chunks[i], chunk); err != nil {
-				errc <- err
-				return
-			}
-
-			// Set chunk path name.
-			d.chunks[i].Path = chunk.Name()
-
-			// Mark this chunk as downloaded.
-			close(d.chunks[i].Done)
 
 			<-max
 		}(i)
 	}
 
 	wg.Wait()
-}
-
-// Merge downloaded chunks.
-func (d *Download) merge() error {
-
-	file, err := os.Create(d.Path())
-	if err != nil {
-		return err
-	}
-
-	defer file.Close()
-
-	for i := range d.chunks {
-
-		select {
-		case <-d.ctx.Done():
-			return d.ctx.Err()
-		case <-d.chunks[i].Done:
-		}
-
-		chunk, err := os.Open(d.chunks[i].Path)
-		if err != nil {
-			return err
-		}
-
-		if _, err = io.Copy(file, chunk); err != nil {
-			return err
-		}
-
-		// Non-blocking chunk close.
-		go chunk.Close()
-
-		// Put chunk in chunk pool
-		ChunkPool.Put(&d.chunks[i])
-
-		// Sync dest file.
-		file.Sync()
-	}
-
-	return nil
+	errC <- nil
 }
 
 // Return constant path which will not change once the download starts
@@ -437,7 +347,7 @@ func (d *Download) updatePath(name string) {
 }
 
 // DownloadChunk downloads a file chunk.
-func (d *Download) DownloadChunk(c Chunk, dest *os.File) error {
+func (d *Download) DownloadChunk(c *Chunk, dest io.Writer) error {
 
 	var (
 		err error
@@ -450,20 +360,23 @@ func (d *Download) DownloadChunk(c Chunk, dest *os.File) error {
 	}
 
 	contentRange := fmt.Sprintf("bytes=%d-%d", c.Start, c.End)
-
-	if c.End == 0 {
-		contentRange = fmt.Sprintf("bytes=%d-", c.Start)
-	}
-
 	req.Header.Set("Range", contentRange)
 
 	if res, err = d.Client.Do(req); err != nil {
 		return err
 	}
 
+	// Verify the length
+	if res.ContentLength != int64(c.End-c.Start+1) {
+		return fmt.Errorf(
+			"Range request returned invalid Content-Length: %d however the range was: %s",
+			res.ContentLength, contentRange,
+		)
+	}
+
 	defer res.Body.Close()
 
-	_, err = io.Copy(dest, io.TeeReader(res.Body, d))
+	_, err = io.CopyN(dest, io.TeeReader(res.Body, d), res.ContentLength)
 
 	return err
 }

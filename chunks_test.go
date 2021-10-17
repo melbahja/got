@@ -26,7 +26,7 @@ func TestChunksLength(t *testing.T) {
 	// So the server must respond with the remaining content starting form 5242871
 	chunk1 := Chunk{
 		Start: 5242871,
-		End:   0,
+		End:   10485759,
 	}
 
 	if d.chunks[0].Start != 0 {
