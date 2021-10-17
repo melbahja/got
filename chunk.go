@@ -1,23 +1,24 @@
 package got
 
 import (
+	"io"
 	"sync"
 )
 
-// Chunk is a partial content range.
+type OffsetWriter struct {
+	io.WriterAt
+	offset int64
+}
+
+func (dst *OffsetWriter) Write(b []byte) (n int, err error) {
+	n, err = dst.WriteAt(b, dst.offset)
+	dst.offset += int64(n)
+	return
+}
+
+// Chunk represents the partial content range
 type Chunk struct {
-
-	// Chunk start pos.
-	Start uint64
-
-	// Chunk end pos.
-	End uint64
-
-	// Path name where this chunk downloaded.
-	Path string
-
-	// Done to check is this chunk downloaded.
-	Done chan struct{}
+	Start, End uint64
 }
 
 // ChunkPool helps in multi *Download files.
