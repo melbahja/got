@@ -157,7 +157,7 @@ func (d *Download) Init() (err error) {
 	// Set chunk ranges.
 	for i := uint64(0); i < chunksLen; i++ {
 
-		chunk := ChunkPool.Get().(*Chunk)
+		chunk := new(Chunk)
 		d.chunks = append(d.chunks, chunk)
 
 		chunk.Start = (d.ChunkSize * i) + i
