@@ -453,18 +453,16 @@ func (d *Download) Name() string {
 	// Avoid returning different path at runtime.
 	if d.name == "" {
 
-		fileName := d.Dest
-
 		// Set default file name.
-		if fileName == "" {
-
+		var fileName string
+		if d.Dest != "" {
+			fileName = d.Dest
+		} else if d.info.Name != "" {
 			// Content disposition name.
 			fileName = d.info.Name
-
+		} else {
 			// if name invalid get name from url.
-			if fileName == "" {
-				fileName = GetFilename(d.URL)
-			}
+			fileName = GetFilename(d.URL)
 		}
 
 		d.name = filepath.Join(d.Dir, fileName)
