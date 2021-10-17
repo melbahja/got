@@ -73,25 +73,25 @@ func (d *Download) GetInfoOrDownload() (*Info, error) {
 	)
 
 	if req, err = NewRequest(d.ctx, "GET", d.URL, append(d.Header, GotHeader{"Range", "bytes=0-0"})); err != nil {
-		return nil, err
+		return &Info{}, err
 	}
 
 	if res, err = d.Client.Do(req); err != nil {
-		return nil, err
+		return &Info{}, err
 	}
 	defer res.Body.Close()
 
 	if res.StatusCode >= 300 {
-		return nil, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
+		return &Info{}, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
 	}
 
 	if dest, err = os.Create(d.Path()); err != nil {
-		return nil, err
+		return &Info{}, err
 	}
 	defer dest.Close()
 
 	if _, err = io.Copy(dest, io.TeeReader(res.Body, d)); err != nil {
-		return nil, err
+		return &Info{}, err
 	}
 
 	// Get content length from content-range response header,
@@ -109,7 +109,7 @@ func (d *Download) GetInfoOrDownload() (*Info, error) {
 			}
 		}
 		// Make sure the caller knows about the problem and we don't just silently fail
-		return nil, fmt.Errorf("Response includes content-range header which is invalid: %s", cr)
+		return &Info{}, fmt.Errorf("Response includes content-range header which is invalid: %s", cr)
 	}
 
 	return &Info{}, nil
@@ -190,31 +190,22 @@ func (d *Download) Init() (err error) {
 }
 
 // Start downloads the file chunks, and merges them.
+// Must be called only after init
 func (d *Download) Start() (err error) {
-
-	// Partial content not supported,
-	// just download the file in one chunk.
-	if len(d.chunks) == 0 {
-
-		// The file already downloaded at getInfoFromGetRequest
-		if d.size > 0 {
+	// If the file was already downloaded during GetInfoOrDownload, then there will be no chunks
+	if d.info.Rangeable == false {
+		select {
+		case <-d.ctx.Done():
+			return d.ctx.Err()
+		default:
 			return nil
 		}
-
-		file, err := os.Create(d.Path())
-
-		if err != nil {
-			return err
-		}
-
-		defer file.Close()
-
-		return d.DownloadChunk(Chunk{}, file)
 	}
+
+	// Otherwise there are always at least 2 chunks
 
 	var (
 		temp string
-		done = make(chan struct{}, 1)
 		errs = make(chan error, 1)
 	)
 
@@ -233,7 +224,6 @@ func (d *Download) Start() (err error) {
 	}()
 
 	select {
-	case <-done:
 	case err = <-errs:
 	case <-d.ctx.Done():
 		err = d.ctx.Err()
@@ -376,6 +366,7 @@ func (d *Download) dl(temp string, errc chan error) {
 // Merge downloaded chunks.
 func (d *Download) merge() error {
 
+	// First allocate a file of the required size so that we can then write concurrently
 	file, err := os.Create(d.Path())
 	if err != nil {
 		return err

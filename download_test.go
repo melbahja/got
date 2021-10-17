@@ -308,7 +308,7 @@ func downloadHeadNotSupported(t *testing.T) {
 		Dest: "/invalid/path",
 	}
 
-	if err := d.Start(); err == nil {
+	if err := d.Init(); err == nil {
 		t.Error("Expecting invalid path error")
 	}
 }
