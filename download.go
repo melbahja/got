@@ -134,6 +134,8 @@ func (d *Download) getInfoFromGetRequest() (*Info, error) {
 				}, nil
 			}
 		}
+		// Make sure the caller knows about the problem and we don't just silently fail
+		return nil, fmt.Errorf("Response includes content-range header which is invalid: %s", cr)
 	}
 
 	return &Info{}, nil
