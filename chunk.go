@@ -2,7 +2,6 @@ package got
 
 import (
 	"io"
-	"sync"
 )
 
 type OffsetWriter struct {
@@ -19,11 +18,4 @@ func (dst *OffsetWriter) Write(b []byte) (n int, err error) {
 // Chunk represents the partial content range
 type Chunk struct {
 	Start, End uint64
-}
-
-// ChunkPool helps in multi *Download files.
-var ChunkPool = &sync.Pool{
-	New: func() interface{} {
-		return new(Chunk)
-	},
 }

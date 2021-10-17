@@ -162,7 +162,7 @@ func (d *Download) Init() (err error) {
 
 		chunk.Start = (d.ChunkSize * i) + i
 		chunk.End = chunk.Start + d.ChunkSize
-		if chunk.End >= d.info.Size {
+		if chunk.End >= d.info.Size || i == chunksLen-1 {
 			chunk.End = d.info.Size - 1
 			// Break on last chunk if i < chunksLen
 			break
