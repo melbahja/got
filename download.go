@@ -21,7 +21,6 @@ type (
 	// Info holds downloadable file info.
 	Info struct {
 		Size      uint64
-		Name      string
 		Rangeable bool
 	}
 
@@ -42,11 +41,11 @@ type (
 
 		StopProgress bool
 
+		path string
+
 		ctx context.Context
 
 		size, lastSize uint64
-
-		name string
 
 		info *Info
 
@@ -61,60 +60,34 @@ type (
 	}
 )
 
-// GetInfo returns URL info, and error if any.
-func (d Download) GetInfo() (*Info, error) {
-
-	req, err := NewRequest(d.ctx, "HEAD", d.URL, d.Header)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if res, err := d.Client.Do(req); err == nil && res.StatusCode == http.StatusOK {
-
-		return &Info{
-			Size:      uint64(res.ContentLength),
-			Name:      getNameFromHeader(res.Header.Get("content-disposition")),
-			Rangeable: res.Header.Get("accept-ranges") == "bytes",
-		}, nil
-	}
-
-	return &Info{}, nil
-}
-
-// getInfoFromGetRequest download the first byte of the file, to get content length in
-// case of HEAD request not supported, and if partial content not supported so this will download the
-// file in one chunk. it returns *Info, and error if any.
-func (d *Download) getInfoFromGetRequest() (*Info, error) {
+// Try downloading the first byte of the file using a range request.
+// If the server supports range requests, then we'll extract the length info from content-range,
+// Otherwise this just downloads the whole file in one go
+func (d *Download) GetInfoOrDownload() (*Info, error) {
 
 	var (
-		err error
-		req *http.Request
-		res *http.Response
+		err  error
+		dest *os.File
+		req  *http.Request
+		res  *http.Response
 	)
 
-	if req, err = NewRequest(d.ctx, "GET", d.URL, d.Header); err != nil {
+	if req, err = NewRequest(d.ctx, "GET", d.URL, append(d.Header, GotHeader{"Range", "bytes=0-0"})); err != nil {
 		return nil, err
 	}
-
-	req.Header.Set("Range", "bytes=0-1")
 
 	if res, err = d.Client.Do(req); err != nil {
 		return nil, err
 	}
-
 	defer res.Body.Close()
 
 	if res.StatusCode >= 300 {
 		return nil, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
 	}
 
-	dest, err := os.Create(d.Name())
-
-	if err != nil {
+	if dest, err = os.Create(d.Path()); err != nil {
 		return nil, err
 	}
-
 	defer dest.Close()
 
 	if _, err = io.Copy(dest, io.TeeReader(res.Body, d)); err != nil {
@@ -122,18 +95,21 @@ func (d *Download) getInfoFromGetRequest() (*Info, error) {
 	}
 
 	// Get content length from content-range response header,
-	// if content-range exists, that's mean partial content is supported.
-	if cr := res.Header.Get("content-range"); cr != "" && res.ContentLength == 2 {
+	// if content-range exists, that means partial content is supported.
+	if cr := res.Header.Get("content-range"); cr != "" && res.ContentLength == 1 {
 		l := strings.Split(cr, "/")
 		if len(l) == 2 {
 			if length, err := strconv.ParseUint(l[1], 10, 64); err == nil {
+				// Update the filename if needed
+				d.updatePath(getNameFromHeader(res.Header.Get("content-disposition")))
 				return &Info{
 					Size:      length,
-					Name:      getNameFromHeader(res.Header.Get("content-disposition")),
 					Rangeable: true,
 				}, nil
 			}
 		}
+		// Make sure the caller knows about the problem and we don't just silently fail
+		return nil, fmt.Errorf("Response includes content-range header which is invalid: %s", cr)
 	}
 
 	return &Info{}, nil
@@ -156,22 +132,14 @@ func (d *Download) Init() (err error) {
 		d.ctx = context.Background()
 	}
 
-	// Get and set URL size and partial content support state.
-	if d.info, err = d.GetInfo(); err != nil {
+	// Get URL info and partial content support state
+	if d.info, err = d.GetInfoOrDownload(); err != nil {
 		return err
 	}
 
-	// Maybe partial content not supported 😢!
-	if d.info.Rangeable == false || d.info.Size == 0 {
-
-		if d.info, err = d.getInfoFromGetRequest(); err != nil {
-			return err
-		}
-
-		// Partial content not supported, and the file downladed.
-		if d.info.Rangeable == false {
-			return nil
-		}
+	// Partial content not supported, and the file downladed.
+	if d.info.Rangeable == false {
+		return nil
 	}
 
 	// Set concurrency default.
@@ -233,7 +201,7 @@ func (d *Download) Start() (err error) {
 			return nil
 		}
 
-		file, err := os.Create(d.Name())
+		file, err := os.Create(d.Path())
 
 		if err != nil {
 			return err
@@ -408,7 +376,7 @@ func (d *Download) dl(temp string, errc chan error) {
 // Merge downloaded chunks.
 func (d *Download) merge() error {
 
-	file, err := os.Create(d.Name())
+	file, err := os.Create(d.Path())
 	if err != nil {
 		return err
 	}
@@ -445,30 +413,27 @@ func (d *Download) merge() error {
 	return nil
 }
 
-// Name returns the downloaded file path.
-func (d *Download) Name() string {
-
-	// Avoid returning different path at runtime.
-	if d.name == "" {
-
-		fileName := d.Dest
-
-		// Set default file name.
-		if fileName == "" {
-
-			// Content disposition name.
-			fileName = d.info.Name
-
-			// if name invalid get name from url.
-			if fileName == "" {
-				fileName = GetFilename(d.URL)
-			}
+// Return constant path which will not change once the download starts
+func (d *Download) Path() string {
+	if d.path == "" {
+		// Set the default path
+		if d.Dest != "" {
+			d.path = d.Dest
+		} else {
+			d.path = GetFilename(d.URL)
 		}
-
-		d.name = filepath.Join(d.Dir, fileName)
+		d.path = filepath.Join(d.Dir, d.path)
 	}
+	return d.path
+}
 
-	return d.name
+// Update the path onle before the download has started
+func (d *Download) updatePath(name string) {
+	if d.Dest == "" && name != "" {
+		// Update only if the name is valid and the path
+		// hasn't been set to dest before, which has higher priority
+		d.path = filepath.Join(d.Dir, name)
+	}
 }
 
 // DownloadChunk downloads a file chunk.

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/melbahja/got"
@@ -53,7 +54,7 @@ func getInfoTest(t *testing.T) {
 
 	dl := got.NewDownload(context.Background(), httpt.URL+"/ok_file", tmpFile)
 
-	info, err := dl.GetInfo()
+	info, err := dl.GetInfoOrDownload()
 
 	if err != nil {
 		t.Error(err)
@@ -82,7 +83,7 @@ func sendHeadersTest(t *testing.T) {
 		},
 	}
 
-	info, err := dl.GetInfo()
+	info, err := dl.GetInfoOrDownload()
 
 	if err != nil {
 		t.Error(err)
@@ -100,21 +101,21 @@ func sendHeadersTest(t *testing.T) {
 
 func getFilenameTest(t *testing.T) {
 
-	tmpFile := createTemp()
-	defer clean(tmpFile)
+	tmpDir := os.TempDir()
+	defer os.RemoveAll(tmpDir)
 
-	dl := got.NewDownload(context.Background(), httpt.URL+"/file_name", tmpFile)
+	dl := got.NewDownload(context.Background(), httpt.URL+"/file_name", "")
+	dl.Dir = tmpDir
 
-	info, err := dl.GetInfo()
+	_, err := dl.GetInfoOrDownload()
 
 	if err != nil {
 
 		t.Errorf("Unexpected error: " + err.Error())
 	}
 
-	if info.Name != "go.mod" {
-
-		t.Errorf("Expecting file name to be: go.mod but got: " + info.Name)
+	if dl.Path() != filepath.Join(tmpDir, "go.mod") {
+		t.Errorf("Expecting file name to be: go.mod but got: " + filepath.Join(tmpDir, "go.mod"))
 	}
 
 }
@@ -250,7 +251,7 @@ func downloadOkFileContentTest(t *testing.T) {
 
 func downloadTimeoutContextTest(t *testing.T) {
 
-	tmpFile := createTemp()
+	tmpFile, _ := ioutil.TempDir("", "")
 	defer clean(tmpFile)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -363,8 +364,8 @@ func coverTests(t *testing.T) {
 		t.Error(err)
 	}
 
-	if d.Name() != got.DefaultFileName {
-		t.Errorf("Expecting name to be: %s but got: %s", got.DefaultFileName, d.Name())
+	if d.Path() != got.DefaultFileName {
+		t.Errorf("Expecting name to be: %s but got: %s", got.DefaultFileName, d.Path())
 	}
 
 	go d.RunProgress(func(d *got.Download) {
