@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -21,7 +20,6 @@ type (
 	// Info holds downloadable file info.
 	Info struct {
 		Size      uint64
-		Name      string
 		Rangeable bool
 	}
 
@@ -42,15 +40,15 @@ type (
 
 		StopProgress bool
 
+		path string
+
 		ctx context.Context
 
 		size, lastSize uint64
 
-		name string
-
 		info *Info
 
-		chunks []Chunk
+		chunks []*Chunk
 
 		startedAt time.Time
 	}
@@ -61,79 +59,56 @@ type (
 	}
 )
 
-// GetInfo returns URL info, and error if any.
-func (d Download) GetInfo() (*Info, error) {
-
-	req, err := NewRequest(d.ctx, "HEAD", d.URL, d.Header)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if res, err := d.Client.Do(req); err == nil && res.StatusCode == http.StatusOK {
-
-		return &Info{
-			Size:      uint64(res.ContentLength),
-			Name:      getNameFromHeader(res.Header.Get("content-disposition")),
-			Rangeable: res.Header.Get("accept-ranges") == "bytes",
-		}, nil
-	}
-
-	return &Info{}, nil
-}
-
-// getInfoFromGetRequest download the first byte of the file, to get content length in
-// case of HEAD request not supported, and if partial content not supported so this will download the
-// file in one chunk. it returns *Info, and error if any.
-func (d *Download) getInfoFromGetRequest() (*Info, error) {
+// Try downloading the first byte of the file using a range request.
+// If the server supports range requests, then we'll extract the length info from content-range,
+// Otherwise this just downloads the whole file in one go
+func (d *Download) GetInfoOrDownload() (*Info, error) {
 
 	var (
-		err error
-		req *http.Request
-		res *http.Response
+		err  error
+		dest *os.File
+		req  *http.Request
+		res  *http.Response
 	)
 
-	if req, err = NewRequest(d.ctx, "GET", d.URL, d.Header); err != nil {
-		return nil, err
+	if req, err = NewRequest(d.ctx, "GET", d.URL, append(d.Header, GotHeader{"Range", "bytes=0-0"})); err != nil {
+		return &Info{}, err
 	}
-
-	req.Header.Set("Range", "bytes=0-1")
 
 	if res, err = d.Client.Do(req); err != nil {
-		return nil, err
+		return &Info{}, err
 	}
-
 	defer res.Body.Close()
 
 	if res.StatusCode >= 300 {
-		return nil, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
+		return &Info{}, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
 	}
 
-	dest, err := os.Create(d.Name())
-
-	if err != nil {
-		return nil, err
+	if dest, err = os.Create(d.Path()); err != nil {
+		return &Info{}, err
 	}
-
 	defer dest.Close()
 
 	if _, err = io.Copy(dest, io.TeeReader(res.Body, d)); err != nil {
-		return nil, err
+		return &Info{}, err
 	}
 
 	// Get content length from content-range response header,
-	// if content-range exists, that's mean partial content is supported.
-	if cr := res.Header.Get("content-range"); cr != "" && res.ContentLength == 2 {
+	// if content-range exists, that means partial content is supported.
+	if cr := res.Header.Get("content-range"); cr != "" && res.ContentLength == 1 {
 		l := strings.Split(cr, "/")
 		if len(l) == 2 {
 			if length, err := strconv.ParseUint(l[1], 10, 64); err == nil {
+				// Update the filename if needed
+				d.updatePath(getNameFromHeader(res.Header.Get("content-disposition")))
 				return &Info{
 					Size:      length,
-					Name:      getNameFromHeader(res.Header.Get("content-disposition")),
 					Rangeable: true,
 				}, nil
 			}
 		}
+		// Make sure the caller knows about the problem and we don't just silently fail
+		return &Info{}, fmt.Errorf("Response includes content-range header which is invalid: %s", cr)
 	}
 
 	return &Info{}, nil
@@ -156,22 +131,14 @@ func (d *Download) Init() (err error) {
 		d.ctx = context.Background()
 	}
 
-	// Get and set URL size and partial content support state.
-	if d.info, err = d.GetInfo(); err != nil {
+	// Get URL info and partial content support state
+	if d.info, err = d.GetInfoOrDownload(); err != nil {
 		return err
 	}
 
-	// Maybe partial content not supported 😢!
-	if d.info.Rangeable == false || d.info.Size == 0 {
-
-		if d.info, err = d.getInfoFromGetRequest(); err != nil {
-			return err
-		}
-
-		// Partial content not supported, and the file downladed.
-		if d.info.Rangeable == false {
-			return nil
-		}
+	// Partial content not supported, and the file downladed.
+	if d.info.Rangeable == false {
+		return nil
 	}
 
 	// Set concurrency default.
@@ -184,36 +151,20 @@ func (d *Download) Init() (err error) {
 		d.ChunkSize = getDefaultChunkSize(d.info.Size, d.MinChunkSize, d.MaxChunkSize, uint64(d.Concurrency))
 	}
 
-	var i, startRange, endRange, chunksLen uint64
-
-	chunksLen = d.info.Size / d.ChunkSize
-
-	d.chunks = make([]Chunk, 0, chunksLen)
+	chunksLen := d.info.Size / d.ChunkSize
+	d.chunks = make([]*Chunk, 0, chunksLen)
 
 	// Set chunk ranges.
-	for ; i < chunksLen; i++ {
+	for i := uint64(0); i < chunksLen; i++ {
 
-		startRange = (d.ChunkSize * i) + i
-		endRange = startRange + d.ChunkSize
+		chunk := new(Chunk)
+		d.chunks = append(d.chunks, chunk)
 
-		if i == 0 {
-			startRange = 0
-		}
-
-		if endRange > d.info.Size || i == (chunksLen-1) {
-			endRange = 0
-		}
-
-		chunk := ChunkPool.Get().(*Chunk)
-		chunk.Path = ""
-		chunk.Start = startRange
-		chunk.End = endRange
-		chunk.Done = make(chan struct{})
-
-		d.chunks = append(d.chunks, *chunk)
-
-		// Break on last chunk if i < chunksLen.
-		if endRange == 0 {
+		chunk.Start = (d.ChunkSize * i) + i
+		chunk.End = chunk.Start + d.ChunkSize
+		if chunk.End >= d.info.Size || i == chunksLen-1 {
+			chunk.End = d.info.Size - 1
+			// Break on last chunk if i < chunksLen
 			break
 		}
 	}
@@ -222,50 +173,34 @@ func (d *Download) Init() (err error) {
 }
 
 // Start downloads the file chunks, and merges them.
+// Must be called only after init
 func (d *Download) Start() (err error) {
-
-	// Partial content not supported,
-	// just download the file in one chunk.
-	if len(d.chunks) == 0 {
-
-		// The file already downloaded at getInfoFromGetRequest
-		if d.size > 0 {
+	// If the file was already downloaded during GetInfoOrDownload, then there will be no chunks
+	if d.info.Rangeable == false {
+		select {
+		case <-d.ctx.Done():
+			return d.ctx.Err()
+		default:
 			return nil
 		}
-
-		file, err := os.Create(d.Name())
-
-		if err != nil {
-			return err
-		}
-
-		defer file.Close()
-
-		return d.DownloadChunk(Chunk{}, file)
 	}
 
-	var (
-		temp string
-		done = make(chan struct{}, 1)
-		errs = make(chan error, 1)
-	)
+	// Otherwise there are always at least 2 chunks
 
-	// Create a new temp dir for this download.
-	if temp, err = ioutil.TempDir("", "GotChunks"); err != nil {
+	file, err := os.Create(d.Path())
+	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(temp)
+	defer file.Close()
+
+	// Allocate the file completely so that we can write concurrently
+	file.Truncate(int64(d.TotalSize()))
 
 	// Download chunks.
-	go d.dl(temp, errs)
-
-	// Merge chunks.
-	go func() {
-		errs <- d.merge()
-	}()
+	errs := make(chan error, 1)
+	go d.dl(file, errs)
 
 	select {
-	case <-done:
 	case err = <-errs:
 	case <-d.ctx.Done():
 		err = d.ctx.Err()
@@ -309,27 +244,27 @@ func (d *Download) RunProgress(fn ProgressFunc) {
 }
 
 // Context returns download context.
-func (d Download) Context() context.Context {
+func (d *Download) Context() context.Context {
 	return d.ctx
 }
 
 // TotalSize returns file total size (0 if unknown).
-func (d Download) TotalSize() uint64 {
+func (d *Download) TotalSize() uint64 {
 	return d.info.Size
 }
 
 // Size returns downloaded size.
-func (d Download) Size() uint64 {
+func (d *Download) Size() uint64 {
 	return atomic.LoadUint64(&d.size)
 }
 
 // Speed returns download speed.
-func (d Download) Speed() uint64 {
+func (d *Download) Speed() uint64 {
 	return (atomic.LoadUint64(&d.size) - atomic.LoadUint64(&d.lastSize)) / d.Interval * 1000
 }
 
 // AvgSpeed returns average download speed.
-func (d Download) AvgSpeed() uint64 {
+func (d *Download) AvgSpeed() uint64 {
 
 	if totalMills := d.TotalCost().Milliseconds(); totalMills > 0 {
 		return uint64(atomic.LoadUint64(&d.size) / uint64(totalMills) * 1000)
@@ -339,7 +274,7 @@ func (d Download) AvgSpeed() uint64 {
 }
 
 // TotalCost returns download duration.
-func (d Download) TotalCost() time.Duration {
+func (d *Download) TotalCost() time.Duration {
 	return time.Now().Sub(d.startedAt)
 }
 
@@ -351,12 +286,12 @@ func (d *Download) Write(b []byte) (int, error) {
 }
 
 // IsRangeable returns file server partial content support state.
-func (d Download) IsRangeable() bool {
+func (d *Download) IsRangeable() bool {
 	return d.info.Rangeable
 }
 
 // Download chunks
-func (d *Download) dl(temp string, errc chan error) {
+func (d *Download) dl(dest io.WriterAt, errC chan error) {
 
 	var (
 		// Wait group.
@@ -372,107 +307,47 @@ func (d *Download) dl(temp string, errc chan error) {
 		wg.Add(1)
 
 		go func(i int) {
-
 			defer wg.Done()
 
-			// Create chunk in temp dir.
-			chunk, err := os.Create(filepath.Join(temp, fmt.Sprintf("chunk-%d", i)))
-
-			if err != nil {
-				errc <- err
+			// Concurrently download and write chunk
+			if err := d.DownloadChunk(d.chunks[i], &OffsetWriter{dest, int64(d.chunks[i].Start)}); err != nil {
+				errC <- err
 				return
 			}
-
-			// Close chunk fd.
-			defer chunk.Close()
-
-			// Download chunk.
-			if err = d.DownloadChunk(d.chunks[i], chunk); err != nil {
-				errc <- err
-				return
-			}
-
-			// Set chunk path name.
-			d.chunks[i].Path = chunk.Name()
-
-			// Mark this chunk as downloaded.
-			close(d.chunks[i].Done)
 
 			<-max
 		}(i)
 	}
 
 	wg.Wait()
+	errC <- nil
 }
 
-// Merge downloaded chunks.
-func (d *Download) merge() error {
-
-	file, err := os.Create(d.Name())
-	if err != nil {
-		return err
+// Return constant path which will not change once the download starts
+func (d *Download) Path() string {
+	if d.path == "" {
+		// Set the default path
+		if d.Dest != "" {
+			d.path = d.Dest
+		} else {
+			d.path = GetFilename(d.URL)
+		}
+		d.path = filepath.Join(d.Dir, d.path)
 	}
-
-	defer file.Close()
-
-	for i := range d.chunks {
-
-		select {
-		case <-d.ctx.Done():
-			return d.ctx.Err()
-		case <-d.chunks[i].Done:
-		}
-
-		chunk, err := os.Open(d.chunks[i].Path)
-		if err != nil {
-			return err
-		}
-
-		if _, err = io.Copy(file, chunk); err != nil {
-			return err
-		}
-
-		// Non-blocking chunk close.
-		go chunk.Close()
-
-		// Put chunk in chunk pool
-		ChunkPool.Put(&d.chunks[i])
-
-		// Sync dest file.
-		file.Sync()
-	}
-
-	return nil
+	return d.path
 }
 
-// Name returns the downloaded file path.
-func (d *Download) Name() string {
-
-	// Avoid returning different path at runtime.
-	if d.name == "" {
-
-		fileName := d.Dest
-
-		// Set default file name.
-		if fileName == "" {
-
-			// Content disposition name.
-			fileName = d.info.Name
-
-			// if name invalid get name from url.
-			if fileName == "" {
-				fileName = GetFilename(d.URL)
-			}
-		}
-
-		d.name = filepath.Join(d.Dir, fileName)
+// Update the path onle before the download has started
+func (d *Download) updatePath(name string) {
+	if d.Dest == "" && name != "" {
+		// Update only if the name is valid and the path
+		// hasn't been set to dest before, which has higher priority
+		d.path = filepath.Join(d.Dir, name)
 	}
-
-	return d.name
 }
 
 // DownloadChunk downloads a file chunk.
-func (d *Download) DownloadChunk(c Chunk, dest *os.File) error {
+func (d *Download) DownloadChunk(c *Chunk, dest io.Writer) error {
 
 	var (
 		err error
@@ -485,20 +360,23 @@ func (d *Download) DownloadChunk(c Chunk, dest *os.File) error {
 	}
 
 	contentRange := fmt.Sprintf("bytes=%d-%d", c.Start, c.End)
-
-	if c.End == 0 {
-		contentRange = fmt.Sprintf("bytes=%d-", c.Start)
-	}
-
 	req.Header.Set("Range", contentRange)
 
 	if res, err = d.Client.Do(req); err != nil {
 		return err
 	}
 
+	// Verify the length
+	if res.ContentLength != int64(c.End-c.Start+1) {
+		return fmt.Errorf(
+			"Range request returned invalid Content-Length: %d however the range was: %s",
+			res.ContentLength, contentRange,
+		)
+	}
+
 	defer res.Body.Close()
 
-	_, err = io.Copy(dest, io.TeeReader(res.Body, d))
+	_, err = io.CopyN(dest, io.TeeReader(res.Body, d), res.ContentLength)
 
 	return err
 }
