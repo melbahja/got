@@ -5,9 +5,29 @@ before:
     - go mod tidy
 builds:
 -
+  id: got
   env:
     - CGO_ENABLED=0
   dir: cmd/got
+  binary: got
+  ldflags:
+    - -s -w -X main.version={{.Version}}+{{.ShortCommit}}
+  goos:
+    - linux
+    - darwin
+    - freebsd
+    - windows
+  goarch:
+    - amd64
+    - arm64
+    - arm
+    - 386
+-
+  id: wgot
+  env:
+    - CGO_ENABLED=0
+  dir: cmd/wgot
+  binary: wgot
   ldflags:
     - -s -w -X main.version={{.Version}}+{{.ShortCommit}}
   goos:
@@ -37,7 +57,7 @@ signs:
   - artifacts: checksum
 
 snapshot:
-  name_template: "{{ .Tag }}-next"
+  name_template: "{{ .Binary }}-{{ .Tag }}-next"
 
 changelog:
   sort: asc
