@@ -42,6 +42,8 @@ type (
 
 		path string
 
+		unsafeName string
+
 		ctx context.Context
 
 		size, lastSize uint64
@@ -84,6 +86,9 @@ func (d *Download) GetInfoOrDownload() (*Info, error) {
 		return &Info{}, fmt.Errorf("Response status code is not ok: %d", res.StatusCode)
 	}
 
+	// Set content disposition non trusted name
+	d.unsafeName = res.Header.Get("content-disposition")
+
 	if dest, err = os.Create(d.Path()); err != nil {
 		return &Info{}, err
 	}
@@ -99,8 +104,7 @@ func (d *Download) GetInfoOrDownload() (*Info, error) {
 		l := strings.Split(cr, "/")
 		if len(l) == 2 {
 			if length, err := strconv.ParseUint(l[1], 10, 64); err == nil {
-				// Update the filename if needed
-				d.updatePath(getNameFromHeader(res.Header.Get("content-disposition")))
+
 				return &Info{
 					Size:      length,
 					Rangeable: true,
@@ -325,25 +329,21 @@ func (d *Download) dl(dest io.WriterAt, errC chan error) {
 
 // Return constant path which will not change once the download starts
 func (d *Download) Path() string {
+
+	// Set the default path
 	if d.path == "" {
-		// Set the default path
+
 		if d.Dest != "" {
 			d.path = d.Dest
+		} else if d.unsafeName != "" {
+			d.path = getNameFromHeader(d.unsafeName)
 		} else {
 			d.path = GetFilename(d.URL)
 		}
 		d.path = filepath.Join(d.Dir, d.path)
 	}
-	return d.path
-}
 
-// Update the path onle before the download has started
-func (d *Download) updatePath(name string) {
-	if d.Dest == "" && name != "" {
-		// Update only if the name is valid and the path
-		// hasn't been set to dest before, which has higher priority
-		d.path = filepath.Join(d.Dir, name)
-	}
+	return d.path
 }
 
 // DownloadChunk downloads a file chunk.
