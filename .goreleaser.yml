@@ -45,7 +45,8 @@ archives:
     darwin: Darwin
     linux: Linux
     freebsd: Freebsd
-    windows: Windows
+  files:
+      - none*
 
 checksum:
   name_template: 'checksums.txt'
@@ -55,7 +56,7 @@ signs:
   - artifacts: checksum
 
 snapshot:
-  name_template: "{{ .Binary }}-{{ .Tag }}-next"
+  name_template: "{{ .Tag }}-next"
 
 changelog:
   sort: asc
