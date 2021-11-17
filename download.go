@@ -333,12 +333,13 @@ func (d *Download) Path() string {
 	// Set the default path
 	if d.path == "" {
 
+		d.path = GetFilename(d.URL) // default case
 		if d.Dest != "" {
 			d.path = d.Dest
 		} else if d.unsafeName != "" {
-			d.path = getNameFromHeader(d.unsafeName)
-		} else {
-			d.path = GetFilename(d.URL)
+			if path := getNameFromHeader(d.unsafeName); path != "" {
+				d.path = path
+			}
 		}
 		d.path = filepath.Join(d.Dir, d.path)
 	}
