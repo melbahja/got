@@ -29,6 +29,11 @@ func TestChunksLength(t *testing.T) {
 		End:   10485759,
 	}
 
+	if d.info.Rangeable == false {
+		t.Errorf("Chunk information could not be retrieved for the test file: %s", d.URL)
+		return
+	}
+
 	if d.chunks[0].Start != 0 {
 
 		t.Errorf("First chunk should start from 0, but got %d", d.chunks[0].Start)
