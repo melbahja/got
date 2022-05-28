@@ -7,7 +7,7 @@ import (
 func TestChunksLength(t *testing.T) {
 
 	d := &Download{
-		URL:          "http://www.ovh.net/files/10Mio.dat",
+		URL:          "https://proof.ovh.net/files/10Mb.dat",
 		MinChunkSize: 5242870,
 	}
 
@@ -27,6 +27,11 @@ func TestChunksLength(t *testing.T) {
 	chunk1 := Chunk{
 		Start: 5242871,
 		End:   10485759,
+	}
+
+	if d.info.Rangeable == false {
+		t.Errorf("Chunk information could not be retrieved for the test file: %s", d.URL)
+		return
 	}
 
 	if d.chunks[0].Start != 0 {
