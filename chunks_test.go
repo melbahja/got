@@ -7,7 +7,7 @@ import (
 func TestChunksLength(t *testing.T) {
 
 	d := &Download{
-		URL:          "http://www.ovh.net/files/10Mio.dat",
+		URL:          "https://proof.ovh.net/files/10Mb.dat",
 		MinChunkSize: 5242870,
 	}
 
