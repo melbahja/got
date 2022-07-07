@@ -59,7 +59,7 @@ sudo mv /tmp/bin/got /usr/bin/got
 
 #### Or Go ahead compile it yourself:
 ```bash
-go get github.com/melbahja/got/cmd/got
+go install github.com/melbahja/got/cmd/got@latest
 ```
 
 #### Or from the AUR
