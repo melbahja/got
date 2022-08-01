@@ -20,15 +20,15 @@ Comparison in cloud server:
 
 ```bash
 
-[root@centos-nyc-12 ~]# time got -o /tmp/test -c 20 http://www.ovh.net/files/1Gio.dat
-URL: http://www.ovh.net/files/1Gio.dat done!
+[root@centos-nyc-12 ~]# time got -o /tmp/test -c 20 https://proof.ovh.net/files/1Gb.dat
+URL: https://proof.ovh.net/files/1Gb.dat done!
 
 real    0m8.832s
 user    0m0.203s
 sys 0m3.176s
 
 
-[root@centos-nyc-12 ~]# time curl http://www.ovh.net/files/1Gio.dat --output /tmp/test1
+[root@centos-nyc-12 ~]# time curl https://proof.ovh.net/files/1Gb.dat --output /tmp/test1
   % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
 								 Dload  Upload   Total   Spent    Left  Speed
 100 1024M  100 1024M    0     0  35.6M      0  0:00:28  0:00:28 --:--:-- 34.4M
