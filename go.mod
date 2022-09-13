@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/dustin/go-humanize v1.0.0
-	github.com/urfave/cli/v2 v2.11.1
+	github.com/urfave/cli/v2 v2.16.3
 	gitlab.com/poldi1405/go-ansi v1.1.0
 	gitlab.com/poldi1405/go-indicators v1.0.0
 	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa
