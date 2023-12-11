@@ -50,7 +50,7 @@ type (
 
 		info *Info
 
-		chunks []*Chunk
+		Chunks []*Chunk
 
 		startedAt time.Time
 	}
@@ -156,13 +156,13 @@ func (d *Download) Init() (err error) {
 	}
 
 	chunksLen := d.info.Size / d.ChunkSize
-	d.chunks = make([]*Chunk, 0, chunksLen)
+	d.Chunks = make([]*Chunk, 0, chunksLen)
 
 	// Set chunk ranges.
 	for i := uint64(0); i < chunksLen; i++ {
 
 		chunk := new(Chunk)
-		d.chunks = append(d.chunks, chunk)
+		d.Chunks = append(d.Chunks, chunk)
 
 		chunk.Start = (d.ChunkSize * i) + i
 		chunk.End = chunk.Start + d.ChunkSize
@@ -305,7 +305,7 @@ func (d *Download) dl(dest io.WriterAt, errC chan error) {
 		max = make(chan int, d.Concurrency)
 	)
 
-	for i := 0; i < len(d.chunks); i++ {
+	for i := 0; i < len(d.Chunks); i++ {
 
 		max <- 1
 		wg.Add(1)
@@ -314,10 +314,11 @@ func (d *Download) dl(dest io.WriterAt, errC chan error) {
 			defer wg.Done()
 
 			// Concurrently download and write chunk
-			if err := d.DownloadChunk(d.chunks[i], &OffsetWriter{dest, int64(d.chunks[i].Start)}); err != nil {
+			if err := d.DownloadChunk(d.Chunks[i], &OffsetWriter{dest, int64(d.Chunks[i].Start)}); err != nil {
 				errC <- err
 				return
 			}
+			d.Chunks[i].IsLoaded = true
 
 			<-max
 		}(i)
