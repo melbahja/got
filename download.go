@@ -318,6 +318,7 @@ func (d *Download) dl(dest io.WriterAt, errC chan error) {
 				errC <- err
 				return
 			}
+			d.chunks[i].IsLoaded = true
 
 			<-max
 		}(i)
