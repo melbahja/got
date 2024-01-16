@@ -34,23 +34,23 @@ func TestChunksLength(t *testing.T) {
 		return
 	}
 
-	if d.chunks[0].Start != 0 {
+	if d.Chunks[0].Start != 0 {
 
-		t.Errorf("First chunk should start from 0, but got %d", d.chunks[0].Start)
+		t.Errorf("First chunk should start from 0, but got %d", d.Chunks[0].Start)
 	}
 
-	if chunk0.End != d.chunks[0].End {
+	if chunk0.End != d.Chunks[0].End {
 
-		t.Errorf("Chunk 0 expecting: %d but got: %d", chunk0.End, d.chunks[0].End)
+		t.Errorf("Chunk 0 expecting: %d but got: %d", chunk0.End, d.Chunks[0].End)
 	}
 
-	if d.chunks[1].Start != 5242871 {
+	if d.Chunks[1].Start != 5242871 {
 
-		t.Errorf("Second chunk should start from: 5242871, but got %d", d.chunks[1].Start)
+		t.Errorf("Second chunk should start from: 5242871, but got %d", d.Chunks[1].Start)
 	}
 
-	if chunk1.End != d.chunks[1].End {
+	if chunk1.End != d.Chunks[1].End {
 
-		t.Errorf("Chunk 1 expecting: %d but got: %d", chunk1.End, d.chunks[1].End)
+		t.Errorf("Chunk 1 expecting: %d but got: %d", chunk1.End, d.Chunks[1].End)
 	}
 }

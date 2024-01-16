@@ -50,9 +50,12 @@ type (
 
 		info *Info
 
-		chunks []*Chunk
+		Chunks []*Chunk
 
 		startedAt time.Time
+		// how many megabytes to download by one megabyte before switching to bigger chunks
+		HotStartMegabytes   uint64
+		HotStartConcurrency uint
 	}
 
 	GotHeader struct {
@@ -149,22 +152,51 @@ func (d *Download) Init() (err error) {
 	if d.Concurrency == 0 {
 		d.Concurrency = getDefaultConcurrency()
 	}
+	if d.HotStartConcurrency == 0 && d.HotStartMegabytes > 0 {
+		d.HotStartConcurrency = 2
+	}
 
 	// Set default chunk size
 	if d.ChunkSize == 0 {
 		d.ChunkSize = getDefaultChunkSize(d.info.Size, d.MinChunkSize, d.MaxChunkSize, uint64(d.Concurrency))
 	}
 
+	d.Chunks = make([]*Chunk, 0)
+
+	Megabyte := uint64(1024 * 1024)
+
+	if d.info.Size < (1*Megabyte) && d.HotStartMegabytes > 0 {
+		chunk := new(Chunk)
+		d.Chunks = append(d.Chunks, chunk)
+		chunk.Start = 0
+		chunk.End = d.info.Size - 1
+		return nil
+	}
+
+	hotStartBytes := d.HotStartMegabytes * Megabyte
+
 	chunksLen := d.info.Size / d.ChunkSize
-	d.chunks = make([]*Chunk, 0, chunksLen)
+
+	if d.info.Size > hotStartBytes {
+
+		chunksLen = (d.info.Size - hotStartBytes) / d.ChunkSize
+		SmallChunkSize := Megabyte
+		for i := uint64(0); i < d.HotStartMegabytes; i++ {
+			chunk := new(Chunk)
+			d.Chunks = append(d.Chunks, chunk)
+
+			chunk.Start = (SmallChunkSize * i) + i
+			chunk.End = chunk.Start + SmallChunkSize
+		}
+	}
 
 	// Set chunk ranges.
 	for i := uint64(0); i < chunksLen; i++ {
 
 		chunk := new(Chunk)
-		d.chunks = append(d.chunks, chunk)
+		d.Chunks = append(d.Chunks, chunk)
 
-		chunk.Start = (d.ChunkSize * i) + i
+		chunk.Start = (d.ChunkSize * i) + i + hotStartBytes
 		chunk.End = chunk.Start + d.ChunkSize
 		if chunk.End >= d.info.Size || i == chunksLen-1 {
 			chunk.End = d.info.Size - 1
@@ -302,10 +334,29 @@ func (d *Download) dl(dest io.WriterAt, errC chan error) {
 		wg sync.WaitGroup
 
 		// Concurrency limit.
-		max = make(chan int, d.Concurrency)
+		max         = make(chan int, d.Concurrency)
+		hotStartMax = make(chan int, d.HotStartConcurrency)
 	)
 
-	for i := 0; i < len(d.chunks); i++ {
+	for i := 0; i < int(d.HotStartMegabytes); i++ {
+		hotStartMax <- 1
+		wg.Add(1)
+
+		go func(i int) {
+			defer wg.Done()
+
+			// Concurrently download and write chunk
+			if err := d.DownloadChunk(d.Chunks[i], &OffsetWriter{dest, int64(d.Chunks[i].Start)}); err != nil {
+				errC <- err
+				return
+			}
+			d.Chunks[i].IsLoaded = true
+
+			<-hotStartMax
+		}(i)
+	}
+
+	for i := int(d.HotStartMegabytes); i < len(d.Chunks); i++ {
 
 		max <- 1
 		wg.Add(1)
@@ -314,10 +365,11 @@ func (d *Download) dl(dest io.WriterAt, errC chan error) {
 			defer wg.Done()
 
 			// Concurrently download and write chunk
-			if err := d.DownloadChunk(d.chunks[i], &OffsetWriter{dest, int64(d.chunks[i].Start)}); err != nil {
+			if err := d.DownloadChunk(d.Chunks[i], &OffsetWriter{dest, int64(d.Chunks[i].Start)}); err != nil {
 				errC <- err
 				return
 			}
+			d.Chunks[i].IsLoaded = true
 
 			<-max
 		}(i)
