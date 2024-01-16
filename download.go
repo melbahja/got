@@ -53,6 +53,8 @@ type (
 		Chunks []*Chunk
 
 		startedAt time.Time
+		// how many megabytes to download by one megabyte before switching to bigger chunks
+		HotStartMegabytes uint64
 	}
 
 	GotHeader struct {
@@ -155,7 +157,33 @@ func (d *Download) Init() (err error) {
 		d.ChunkSize = getDefaultChunkSize(d.info.Size, d.MinChunkSize, d.MaxChunkSize, uint64(d.Concurrency))
 	}
 
+	Megabyte := uint64(1024 * 1024)
+
+	if d.info.Size < (1*Megabyte) && d.HotStartMegabytes > 0 {
+		chunk := new(Chunk)
+		d.Chunks = append(d.Chunks, chunk)
+		chunk.Start = 0
+		chunk.End = d.info.Size - 1
+		return nil
+	}
+
+	hotStartBytes := d.HotStartMegabytes * Megabyte
+
 	chunksLen := d.info.Size / d.ChunkSize
+
+	if d.info.Size > hotStartBytes {
+
+		chunksLen = (d.info.Size - hotStartBytes) / d.ChunkSize
+		SmallChunkSize := Megabyte
+		for i := uint64(0); i < d.HotStartMegabytes; i++ {
+			chunk := new(Chunk)
+			d.Chunks = append(d.Chunks, chunk)
+
+			chunk.Start = (SmallChunkSize * i) + i
+			chunk.End = chunk.Start + SmallChunkSize
+		}
+	}
+
 	d.Chunks = make([]*Chunk, 0, chunksLen)
 
 	// Set chunk ranges.
@@ -164,7 +192,7 @@ func (d *Download) Init() (err error) {
 		chunk := new(Chunk)
 		d.Chunks = append(d.Chunks, chunk)
 
-		chunk.Start = (d.ChunkSize * i) + i
+		chunk.Start = (d.ChunkSize * i) + i + hotStartBytes
 		chunk.End = chunk.Start + d.ChunkSize
 		if chunk.End >= d.info.Size || i == chunksLen-1 {
 			chunk.End = d.info.Size - 1
